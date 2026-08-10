@@ -79,6 +79,16 @@ async function toggleAdmin(u) {
   }
 }
 
+async function toggleBan(u) {
+  try {
+    const updated = await adminApi.updateUserRole(u.id, { banned: !u.banned })
+    u.banned = updated.banned
+    ElMessage.success(`${u.email} 已${u.banned ? '封禁' : '解封'}`)
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
 async function loadScenarios() {
   try {
     scenarios.value = (await adminApi.scenarios()).items
@@ -226,13 +236,14 @@ onBeforeUnmount(() => {
               <th>用户名</th>
               <th>角色</th>
               <th>管理员</th>
+              <th>状态</th>
               <th>到期时间</th>
               <th>注册时间</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in users" :key="u.id">
+            <tr v-for="u in users" :key="u.id" :class="{ banned: u.banned }">
               <td>{{ u.email }}</td>
               <td>{{ u.username || '—' }}</td>
               <td><span class="role-pill" :class="u.role">{{ ROLE_LABELS[u.role] || u.role }}</span></td>
@@ -240,16 +251,23 @@ onBeforeUnmount(() => {
                 <span v-if="u.is_admin" class="role-pill enterprise">管理员</span>
                 <span v-else class="dim">—</span>
               </td>
+              <td>
+                <span v-if="u.banned" class="role-pill ban">已封禁</span>
+                <span v-else class="dim">正常</span>
+              </td>
               <td>{{ u.expire_at ? new Date(u.expire_at).toLocaleDateString('zh-CN') : '—' }}</td>
               <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '—' }}</td>
               <td class="ops">
-                <el-select v-if="!u.is_admin || u.id !== meId" :model-value="u.role" size="small" @change="(v) => changeRole(u, v)">
+                <el-select v-if="u.id !== meId" :model-value="u.role" size="small" @change="(v) => changeRole(u, v)">
                   <el-option label="免费" value="free" />
                   <el-option label="Pro" value="pro" />
                   <el-option label="企业" value="enterprise" />
                 </el-select>
                 <el-button v-if="u.id !== meId" size="small" plain :type="u.is_admin ? 'danger' : 'primary'" @click="toggleAdmin(u)">
                   {{ u.is_admin ? '取消管理员' : '设为管理员' }}
+                </el-button>
+                <el-button v-if="u.id !== meId" size="small" plain :type="u.banned ? 'success' : 'danger'" @click="toggleBan(u)">
+                  {{ u.banned ? '解封' : '封禁' }}
                 </el-button>
               </td>
             </tr>
@@ -471,6 +489,15 @@ onBeforeUnmount(() => {
 .role-pill.enterprise {
   color: var(--seal-bright);
   border-color: var(--seal);
+}
+
+.role-pill.ban {
+  color: #d98a7a;
+  border-color: rgba(194, 69, 46, 0.55);
+}
+
+tr.banned td {
+  opacity: 0.55;
 }
 
 .dim {

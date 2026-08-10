@@ -31,6 +31,7 @@ class User(Base):
     )
     expire_at: Mapped[datetime | None]
     is_admin: Mapped[bool] = mapped_column(default=False, server_default="false")  # PRD 9.16
+    banned: Mapped[bool] = mapped_column(default=False, server_default="false")  # 管理后台封禁
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

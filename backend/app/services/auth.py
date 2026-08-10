@@ -164,6 +164,42 @@ class AuthService:
         if expected is None or expected != code:
             raise WrongCodeError("验证码错误或已过期")
 
+    def change_password(
+        self, db: Session, email: str, old_password: str, new_password: str
+    ) -> None:
+        """登录态改密码：校验旧密码后更新（新密码 >= 8 位）。"""
+        email = email.strip().lower()
+        if len(new_password) < 8:
+            raise ValueError("密码长度至少 8 位")
+        user = self._user(db, email)
+        if user is None:
+            raise UserNotFoundError("用户不存在")
+        if not verify_password(old_password, user.password_hash):
+            raise InvalidCredentialsError("旧密码错误")
+        user.password_hash = hash_password(new_password)
+        db.commit()
+        logger.info("密码已修改: %s", email)
+
+    def reset_password(
+        self,
+        db: Session,
+        email: str,
+        code: str,
+        new_password: str,
+        code_store: CodeStore | None = None,
+    ) -> None:
+        """忘记密码：邮箱验证码校验通过后重置密码。"""
+        email = email.strip().lower()
+        if len(new_password) < 8:
+            raise ValueError("密码长度至少 8 位")
+        user = self._user(db, email)
+        if user is None:
+            raise UserNotFoundError("用户不存在")
+        self.verify_code(db, email, code, code_store=code_store)
+        user.password_hash = hash_password(new_password)
+        db.commit()
+        logger.info("密码已重置: %s", email)
+
     def login(
         self,
         db: Session,
@@ -183,6 +219,8 @@ class AuthService:
         )
         if user is None:
             raise UserNotFoundError("用户不存在")
+        if getattr(user, "banned", False):
+            raise AccountLockedError("账号已被封禁，请联系管理员")
         if not verify_password(password, user.password_hash):
             store.increment(account)
             raise InvalidCredentialsError("密码错误")

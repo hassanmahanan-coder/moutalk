@@ -132,6 +132,55 @@ def test_login_returns_is_admin_flag(session):
     assert t2["user"]["is_admin"] is False
 
 
+def test_login_banned_user_rejected(session):
+    """封禁用户禁止登录（管理后台封禁能力）。"""
+    user = auth_service.register(session, "banned@x.com", "password123", username="banned_u")
+    session.commit()
+    user.banned = True
+    session.commit()
+    with pytest.raises(AccountLockedError):
+        auth_service.login(session, "banned@x.com", "password123")
+
+
+class TestChangePassword:
+    def test_change_password_success(self, session):
+        auth_service.register(session, "cp@x.com", "password123", username="cp_u")
+        session.commit()
+        auth_service.change_password(session, "cp@x.com", "password123", "newpass456")
+        # 旧密码失效、新密码可登录
+        with pytest.raises(InvalidCredentialsError):
+            auth_service.login(session, "cp@x.com", "password123")
+        tokens = auth_service.login(session, "cp@x.com", "newpass456")
+        assert tokens["user"]["email"] == "cp@x.com"
+
+    def test_change_password_wrong_old_rejected(self, session):
+        auth_service.register(session, "cp2@x.com", "password123", username="cp2_u")
+        session.commit()
+        with pytest.raises(InvalidCredentialsError):
+            auth_service.change_password(session, "cp2@x.com", "wrong-old", "newpass456")
+
+    def test_change_password_unknown_user_rejected(self, session):
+        with pytest.raises(UserNotFoundError):
+            auth_service.change_password(session, "ghost@x.com", "x", "newpass456")
+
+    def test_reset_password_with_code(self, session, code_store):
+        """忘记密码：验证码 + 新密码重置。"""
+        auth_service.register(session, "fp@x.com", "password123", username="fp_u")
+        session.commit()
+        code = auth_service.issue_code(session, "fp@x.com", code_store=code_store)
+        auth_service.reset_password(session, "fp@x.com", code, "resetpass789", code_store=code_store)
+        with pytest.raises(InvalidCredentialsError):
+            auth_service.login(session, "fp@x.com", "password123")
+        assert auth_service.login(session, "fp@x.com", "resetpass789")["user"]["email"] == "fp@x.com"
+
+    def test_reset_password_wrong_code_rejected(self, session, code_store):
+        auth_service.register(session, "fp2@x.com", "password123", username="fp2_u")
+        session.commit()
+        auth_service.issue_code(session, "fp2@x.com", code_store=code_store)
+        with pytest.raises(WrongCodeError):
+            auth_service.reset_password(session, "fp2@x.com", "000000", "resetpass789", code_store=code_store)
+
+
 def test_login_success_returns_tokens(session):
     auth_service.register(session, "bob@example.com", "password123")
     session.commit()

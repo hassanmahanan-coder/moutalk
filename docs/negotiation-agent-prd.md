@@ -1793,3 +1793,68 @@ POSTGRES_HOST=localhost / PORT=5433       # Docker 映射
 ---
 
 *本附录随开发持续更新；PRD 正文（v3.0）保持为产品需求基线，功能增删以本附录 B.1 状态为准。*
+
+## 附录 C：新增功能清单（v4.0 实施增量，截至 2026-08-10）
+
+> 以下功能为 PRD 基线之外的实施增量（含原"范围外/未来"提前实现项），均经测试护航。
+
+### C.1 认证与账号
+| 功能 | 说明 | 测试 |
+|---|---|---|
+| 用户名账号登录 | 注册必填用户名（3-20 位字母开头），登录框自动识别邮箱/用户名；/me 与登录响应含 is_admin | test_auth.py |
+| 修改密码 | 登录态校验旧密码后更新 | TestChangePassword |
+| 忘记密码 | 邮箱验证码 + 重置（复用注册验证码体系） | forgot/reset API |
+| 用户封禁 | users.banned 列；封禁后登录 423；管理后台可封禁/解封 | test_auth + test_admin_api |
+
+### C.2 支付
+| 功能 | 说明 | 测试 |
+|---|---|---|
+| 一键直付 | 支付页双按钮二选一：支付宝沙箱 / 一键直付（点击即成功，演示内测用）| test_payment_api |
+| 支付轮询 | GET /api/payment/orders/{id} 订单状态查询（真实支付前端轮询）| test_payment_api |
+| 支付成功通知 | 落库 + 在线 WS 实时推送 | test_payment_service |
+
+### C.3 通知体系（PRD 9.15 完整闭环）
+| 功能 | 说明 | 测试 |
+|---|---|---|
+| 全局推送通道 | GET /api/notifications/ws（JWT + 心跳 + 断线重连），支付/报告事件实时推送 | test_notifications |
+| 类型筛选 | ?type=report/payment/system + 个人中心筛选 tab | test_notifications |
+| 30 天清理调度 | Celery beat 每日 cleanup_notifications | test_celery_app |
+| 报告完成通知 | dev 同步路径 + Celery worker 路径均落库（worker 无 WS 通道靠拉取）| test_celery_app |
+
+### C.4 管理后台
+| 功能 | 说明 | 测试 |
+|---|---|---|
+| 用户管理 | 列表（不含密码哈希）+ 角色调整（free/pro/enterprise）+ 设管理员 + 封禁；防自改 400 | test_admin_api |
+| 场景管理 | 列表 + 定价 + 上下架（on_sale 列）；下架后用户端不可见/详情 404 | test_admin_api + test_scenarios_api |
+| 审计日志 | 所有管理操作写 admin_audit_log（含访问视图）| test_admin_api |
+| 前端页面 | /admin（仅 is_admin 可见）：运营概览/用户管理/场景管理三 tab | AdminView.test.js |
+
+### C.5 谈判引擎增强
+| 功能 | 说明 | 测试 |
+|---|---|---|
+| 战术/底线持久化 | history 消息携带 tactic/bottom_line_status（战术统计与回放标注数据源）| test_engine |
+| 真流式 | utterance 节点 LLM astream 逐 token 转发（重试轮自动退回非流式）| test_engine |
+| 实时分数 | meta.score（PRD 8.2 协议字段）+ 谈判室评分显示 | test_meta_score |
+| 教练 Agent | WS coach 协议 + 分析/策略/话术选项（原"未来考虑"提前实现）| test_coach |
+| 合规声明 | 谈判室背景侧栏模拟训练声明 | 前端 |
+
+### C.6 前端与工程
+| 功能 | 说明 | 测试 |
+|---|---|---|
+| 进步曲线页 | /trends ECharts 三线 + 空态引导 | TrendsView |
+| 前端测试体系 | vitest 21 例（api/store/Login/Register/Admin）+ CI 集成 | npm run test |
+| E2E 测试 | Playwright 4 例（注册登录/登录失败/忘记密码/发起谈判），Chromium | npm run test:e2e |
+| CI 真实链路 | LLM smoke（配置密钥时跑真实网关 ainvoke/astream）| scripts/llm_smoke.py |
+| 备份恢复演练 | backup.sh --restore + README 演练流程 | test_deploy_assets |
+| 部署守卫 | Caddyfile/compose/backup/.env.prod.example 存在性守卫 | test_deploy_assets |
+
+### C.7 测试基线（当前）
+- 后端：**436 passed** + ruff clean
+- 前端：vitest 21 passed + Playwright E2E 4 passed + build 通过
+- 迁移：53f0702dbf0f → 58f71c3926e5 → 8884346523fb → b9239a8602ae → 360f036d2731 → 6c8e2dfd61ee
+
+### C.8 已知限制
+- 支付宝沙箱网关 502（外部，watchdog 探测中）；一键直付可演示
+- Windows 开发机 PostgresSaver 因 ProactorEventLoop 降级 JSON 持久化（功能不受影响）
+- Celery worker 无 WS 通道，生产路径报告通知靠落库+拉取
+- 通知推送/WS 仅在 API 进程内（worker 进程无法直推）

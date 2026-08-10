@@ -192,3 +192,87 @@ def test_me_with_token_returns_user(client):
     assert r.json()["email"] == "judy@example.com"
     assert r.json()["username"] == "judy_user"
     assert "password_hash" not in r.json()
+
+
+def test_change_password_api(client):
+    client.post(
+        "/api/auth/register",
+        json={"username": "cpa", "email": "cpa@example.com", "password": "password123"},
+    )
+    login = client.post(
+        "/api/auth/login",
+        json={"account": "cpa@example.com", "password": "password123"},
+    ).json()
+    h = {"Authorization": f"Bearer {login['access_token']}"}
+    # 旧密码错误 401
+    r = client.post(
+        "/api/auth/change-password",
+        json={"old_password": "wrong", "new_password": "newpass456"},
+        headers=h,
+    )
+    assert r.status_code == 401
+    # 正确修改
+    r = client.post(
+        "/api/auth/change-password",
+        json={"old_password": "password123", "new_password": "newpass456"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    # 旧密码失效
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"account": "cpa@example.com", "password": "password123"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"account": "cpa@example.com", "password": "newpass456"},
+        ).status_code
+        == 200
+    )
+
+
+def test_forgot_and_reset_password_api(client):
+    client.post(
+        "/api/auth/register",
+        json={"username": "fpa", "email": "fpa@example.com", "password": "password123"},
+    )
+    # 发送验证码
+    r = client.post(
+        "/api/auth/forgot-password",
+        json={"email": "fpa@example.com"},
+    )
+    assert r.status_code == 200
+    code = r.json()["code"]
+    # 错误验证码 400
+    assert (
+        client.post(
+            "/api/auth/reset-password",
+            json={"email": "fpa@example.com", "code": "000000", "new_password": "resetpass789"},
+        ).status_code
+        == 400
+    )
+    # 正确验证码重置
+    r = client.post(
+        "/api/auth/reset-password",
+        json={"email": "fpa@example.com", "code": code, "new_password": "resetpass789"},
+    )
+    assert r.status_code == 200
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"account": "fpa@example.com", "password": "resetpass789"},
+        ).status_code
+        == 200
+    )
+
+
+def test_forgot_password_unknown_email_404(client):
+    r = client.post(
+        "/api/auth/forgot-password",
+        json={"email": "no-such@example.com"},
+    )
+    assert r.status_code == 404

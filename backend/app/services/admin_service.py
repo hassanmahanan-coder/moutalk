@@ -80,6 +80,7 @@ def admin_list_users(db: Session, limit: int = 100) -> list[dict[str, Any]]:
             "username": u.username,
             "role": u.role.value,
             "is_admin": u.is_admin,
+            "banned": bool(u.banned),
             "expire_at": u.expire_at.isoformat() if u.expire_at else None,
             "created_at": u.created_at.isoformat() if u.created_at else None,
         }
@@ -93,8 +94,9 @@ def admin_update_user_role(
     role: str | None = None,
     admin_id: uuid.UUID | None = None,
     is_admin: bool | None = None,
+    banned: bool | None = None,
 ) -> User | None:
-    """调整用户角色/管理员标记；返回更新后的用户，不存在返回 None。
+    """调整用户角色/管理员标记/封禁状态；返回更新后的用户，不存在返回 None。
 
     安全：禁止管理员修改自己（防自降级后绕过鉴权）；审计日志由 API 层写。
     """
@@ -107,6 +109,8 @@ def admin_update_user_role(
         user.role = UserRole(role) if isinstance(role, str) else role
     if is_admin is not None:
         user.is_admin = is_admin
+    if banned is not None:
+        user.banned = banned
     db.commit()
     return user
 

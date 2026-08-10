@@ -251,6 +251,36 @@ def test_admin_cannot_set_own_is_admin(client, admin_auth, session):
     assert r.status_code == 400
 
 
+def test_admin_ban_user(client, admin_auth, session):
+    """管理后台封禁：banned=true 后用户无法登录。"""
+    client.post(
+        "/api/auth/register",
+        json={"username": "banme", "email": "banme@example.com", "password": "password123"},
+    )
+    target = session.scalar(select(User).where(User.email == "banme@example.com"))
+    r = client.patch(
+        f"/api/admin/users/{target.id}",
+        json={"banned": True},
+        headers=admin_auth,
+    )
+    assert r.status_code == 200
+    assert r.json()["banned"] is True
+    # 封禁后登录被拒
+    login = client.post(
+        "/api/auth/login",
+        json={"account": "banme@example.com", "password": "password123"},
+    )
+    assert login.status_code == 423
+    assert login.json()["error"]["code"] == "ACCOUNT_LOCKED"
+    # 解封后可登录
+    client.patch(f"/api/admin/users/{target.id}", json={"banned": False}, headers=admin_auth)
+    login = client.post(
+        "/api/auth/login",
+        json={"account": "banme@example.com", "password": "password123"},
+    )
+    assert login.status_code == 200
+
+
 # ---- 场景包管理（PRD 9.16 扩展：上下架/定价）----
 
 

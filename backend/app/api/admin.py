@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 class UpdateUserRoleRequest(BaseModel):
     role: UserRole | None = None
     is_admin: bool | None = None
+    banned: bool | None = None
 
 
 class UpdateScenarioRequest(BaseModel):
@@ -78,8 +79,8 @@ def update_user_role(
     db: Session = Depends(get_db),
     admin: User = Depends(get_admin_user),
 ) -> dict:
-    """调整用户角色/管理员标记（管理员，PRD 9.16）：写审计日志。"""
-    if req.role is None and req.is_admin is None:
+    """调整用户角色/管理员标记/封禁（管理员，PRD 9.16 扩展）：写审计日志。"""
+    if req.role is None and req.is_admin is None and req.banned is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "EMPTY_UPDATE", "message": "至少提供一个修改项"},
@@ -97,7 +98,12 @@ def update_user_role(
         )
     try:
         user = admin_service.admin_update_user_role(
-            db, target_id, role=role_value, admin_id=admin.id, is_admin=req.is_admin
+            db,
+            target_id,
+            role=role_value,
+            admin_id=admin.id,
+            is_admin=req.is_admin,
+            banned=req.banned,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -116,6 +122,7 @@ def update_user_role(
         "username": user.username,
         "role": user.role.value,
         "is_admin": bool(user.is_admin),
+        "banned": bool(user.banned),
     }
 
 

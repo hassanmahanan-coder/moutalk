@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { authApi, notificationApi, quotaApi } from '../api'
@@ -11,8 +11,39 @@ const quota = ref(null)
 const notifications = ref([])
 const notifLoading = ref(false)
 const filterType = ref('all')
+const pwdOpen = ref(false)
+const pwdLoading = ref(false)
+const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '' })
 
 const TYPE_LABEL = { report: '复盘报告', payment: '支付', system: '系统' }
+
+async function changePassword() {
+  if (!pwdForm.oldPassword || !pwdForm.newPassword) {
+    ElMessage.warning('请填写当前密码与新密码')
+    return
+  }
+  if (pwdForm.newPassword.length < 8) {
+    ElMessage.warning('新密码至少 8 位')
+    return
+  }
+  if (pwdForm.newPassword !== pwdForm.confirm) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  pwdLoading.value = true
+  try {
+    await authApi.changePassword(pwdForm.oldPassword, pwdForm.newPassword)
+    ElMessage.success('密码已修改，下次登录请使用新密码')
+    pwdOpen.value = false
+    pwdForm.oldPassword = ''
+    pwdForm.newPassword = ''
+    pwdForm.confirm = ''
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    pwdLoading.value = false
+  }
+}
 
 async function loadNotifications() {
   notifLoading.value = true
@@ -98,6 +129,7 @@ function expireHint() {
             <el-button v-if="quota.role === 'free'" type="primary" size="small" @click="router.push({ name: 'payment' })">升级 Pro</el-button>
             <el-button v-else plain size="small" @click="router.push({ name: 'payment' })">续费</el-button>
             <el-button plain size="small" @click="router.push({ name: 'reports' })">谈判历史</el-button>
+            <el-button plain size="small" @click="pwdOpen = !pwdOpen">修改密码</el-button>
             <el-button plain size="small" @click="logout">退出登录</el-button>
           </div>
         </div>
@@ -112,6 +144,19 @@ function expireHint() {
               <i :style="{ width: `${s.limit ? Math.min(100, (s.used / s.limit) * 100) : 0}%` }"></i>
             </div>
             <span class="q-num">{{ s.limit ? `${s.used}/${s.limit}` : '∞' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="pwdOpen" class="sec">
+        <h2>修改密码</h2>
+        <div class="card">
+          <el-input v-model="pwdForm.oldPassword" type="password" show-password placeholder="当前密码" size="large" />
+          <el-input v-model="pwdForm.newPassword" type="password" show-password placeholder="新密码（至少 8 位）" size="large" />
+          <el-input v-model="pwdForm.confirm" type="password" show-password placeholder="确认新密码" size="large" />
+          <div class="pwd-actions">
+            <el-button type="primary" :loading="pwdLoading" @click="changePassword">确认修改</el-button>
+            <el-button plain @click="pwdOpen = false">取消</el-button>
           </div>
         </div>
       </section>

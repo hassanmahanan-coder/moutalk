@@ -526,3 +526,16 @@ egotiation.py / eports.py：dev 环境（app_env=dev）直接同步生成报告
   3. **新增 is_admin 设置**：UpdateUserRoleRequest 加 `is_admin: bool | None`；service 支持；**防自改（管理员不可修改自己的 role/is_admin，400）**保留；响应含 is_admin；前端用户管理行加"设为/取消管理员"按钮 + 管理员列（自己行隐藏操作）。
 - **验证**：全链路实测——设管理员→新管理员登录 is_admin=True+访问 200→收回→403→自改 400→角色+管理员同改 200；定价/下架/上架/用户端过滤全通；后端 436 passed（+2 is_admin 测试 +1 空更新）+ ruff clean；前端 13 passed + build 通过。
 - **注意**：本机双 Python 环境（.venv/Miniconda）会导致同一代码在不同实例上行为差异（pydantic/SQLAlchemy 版本），排查时先确认 8765 监听者环境；管理后台角色/管理员修改均写 admin_audit_log。
+
+## 51. 收尾批次：封禁/改密码/忘记密码/前端测试补充/E2E/PRD 附录 C
+
+- **状态**：已实现（后端 446 passed + 前端 vitest 21 + E2E 4 + ruff clean）
+- **实现**：
+  1. **用户封禁**：users.banned 列（迁移 6c8e2dfd61ee，dev 库已 ALTER）；登录拦截（banned → 423 ACCOUNT_LOCKED）；管理后台封禁/解封按钮 + 状态列（自己行隐藏操作）。
+  2. **改密码**：`POST /api/auth/change-password`（登录态，旧密码校验 401/新密码 ≥8 位）+ ProfileView「修改密码」表单。
+  3. **忘记密码**：`POST /api/auth/forgot-password`（发验证码）+ `POST /api/auth/reset-password`（验证码校验后重置）+ LoginView「忘记密码」两步流程。
+  4. **前端测试补充**：RegisterView（用户名校验/必填/密码一致）+ AdminView（KPI 加载/用户列表/封禁操作）→ vitest 21 例。
+  5. **E2E（Playwright）**：安装 chromium（npmmirror 镜像，PLAYWRIGHT_DOWNLOAD_HOST）+ 4 例（注册登录/登录失败/忘记密码/发起谈判）。关键坑：JS Date.now() 13 位毫秒导致用户名超 20 位 422（改短随机）；`expect(locator).first()` 应为 `expect(locator.first())`；登录后 URL 无尾斜杠（改元素断言）；角色 class 在 bubble-row 上（`.bubble-row.user .bubble`）；真实 GLM 在 Windows + WS 竞态下不稳定（E2E 谈判用例降级为验证 UI 流程，完整回复链路由 pytest MockLLM 覆盖）。
+  6. **PRD 附录 C**：新增功能清单（认证/支付/通知/管理后台/引擎增强/前端工程/测试基线/已知限制）。
+- **验证**：端到端实测——封禁 423→解封 200；忘记密码发码→重置→新密码登录；改密码→新密码登录；全量 446 passed；vitest 21 + E2E 4；ruff clean；前端 build 通过。
+- **注意**：① E2E 需后端 8765 + 前端 5173 运行中（webServer 复用现有实例）；② Windows PostgresSaver ProactorEventLoop 降级 JSON 持久化（既有环境问题，已入 PRD C.8）；③ Playwright 浏览器已下载至 %LOCALAPPDATA%\ms-playwright（chromium 427MB）。

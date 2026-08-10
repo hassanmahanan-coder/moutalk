@@ -42,6 +42,21 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 def _auth_error(exc: AuthError) -> HTTPException:
     mapping: dict[type[AuthError], tuple[int, str]] = {
         UserAlreadyExistsError: (status.HTTP_409_CONFLICT, "USER_ALREADY_EXISTS"),
@@ -96,6 +111,53 @@ def refresh(req: RefreshRequest, db: Session = Depends(get_db)) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "INVALID_TOKEN", "message": str(exc)},
         ) from exc
+
+
+@router.post("/change-password")
+def change_password(
+    req: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """登录态修改密码（校验旧密码）。"""
+    try:
+        auth_service.change_password(db, user.email, req.old_password, req.new_password)
+    except AuthError as exc:
+        raise _auth_error(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "VALIDATION_ERROR", "message": str(exc)},
+        ) from exc
+    return {"changed": True}
+
+
+@router.post("/forgot-password")
+def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)) -> dict:
+    """忘记密码：发送邮箱验证码（未登录）。"""
+    email = req.email.strip().lower()
+    if auth_service._user(db, email) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "USER_NOT_FOUND", "message": "用户不存在"},
+        )
+    code = auth_service.issue_code(db, email)
+    return {"sent": True, "code": code}
+
+
+@router.post("/reset-password")
+def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)) -> dict:
+    """忘记密码：验证码校验后重置。"""
+    try:
+        auth_service.reset_password(db, req.email, req.code, req.new_password)
+    except AuthError as exc:
+        raise _auth_error(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "VALIDATION_ERROR", "message": str(exc)},
+        ) from exc
+    return {"reset": True}
 
 
 @router.get("/me")

@@ -6,6 +6,11 @@ export const authApi = {
   verify: (email, code) => http.post('/auth/verify', { email, code }),
   refresh: (refreshToken) => http.post('/auth/refresh', { refresh_token: refreshToken }),
   me: () => http.get('/auth/me'),
+  changePassword: (oldPassword, newPassword) =>
+    http.post('/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
+  forgotPassword: (email) => http.post('/auth/forgot-password', { email }),
+  resetPassword: (email, code, newPassword) =>
+    http.post('/auth/reset-password', { email, code, new_password: newPassword }),
 }
 
 export const scenarioApi = {
