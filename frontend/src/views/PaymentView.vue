@@ -18,6 +18,27 @@ async function mockNotify(order) {
   return res.text()
 }
 
+async function quickPay(type, targetId = null, label = '') {
+  // 一键直付：不下发支付宝，下单后直接触发支付回调秒成功（演示/内测用）
+  paying.value = label
+  loading.value = true
+  try {
+    const order = await paymentApi.createOrder(type, targetId)
+    const ok = await mockNotify(order)
+    if (ok === 'success') {
+      ElMessage.success('支付成功')
+      await auth.fetchMe()
+    } else {
+      ElMessage.error('回调处理失败，请联系支持')
+    }
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    loading.value = false
+    paying.value = ''
+  }
+}
+
 async function pollOrder(orderId, timeoutMs = 60000) {
   const intervalMs = 2000
   const deadline = Date.now() + timeoutMs
@@ -104,15 +125,24 @@ onMounted(async () => {
           <li>解锁付费场景包</li>
           <li>完整复盘报告与建议</li>
         </ul>
-        <el-button
-          v-if="!auth.isPro"
-          type="primary"
-          size="large"
-          :loading="paying === 'subscribe' && loading"
-          @click="buy('subscribe', null, 'subscribe')"
-        >
-          立即开通
-        </el-button>
+        <div v-if="!auth.isPro" class="pay-actions">
+          <el-button
+            type="primary"
+            size="large"
+            :loading="paying === 'subscribe-alipay' && loading"
+            @click="buy('subscribe', null, 'subscribe-alipay')"
+          >
+            支付宝支付
+          </el-button>
+          <el-button
+            plain
+            size="large"
+            :loading="paying === 'subscribe-quick' && loading"
+            @click="quickPay('subscribe', null, 'subscribe-quick')"
+          >
+            一键直付
+          </el-button>
+        </div>
         <span v-else class="current">Pro 生效中</span>
       </section>
     </div>
@@ -127,15 +157,20 @@ onMounted(async () => {
           <p>{{ s.briefing }}</p>
           <div class="scen-foot">
             <span class="price">¥ {{ Number(s.price).toFixed(2) }}</span>
-            <el-button type="primary" :loading="paying === s.id && loading" @click="buy('scenario', s.id, s.id)">
-              购买解锁
-            </el-button>
+            <div class="scen-btns">
+              <el-button type="primary" :loading="paying === `a-${s.id}` && loading" @click="buy('scenario', s.id, `a-${s.id}`)">
+                支付宝支付
+              </el-button>
+              <el-button plain :loading="paying === `q-${s.id}` && loading" @click="quickPay('scenario', s.id, `q-${s.id}`)">
+                一键直付
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <p class="note">支付走支付宝沙箱收银台（配置密钥后）；未配置密钥时自动降级为模拟支付（PRD 7.5 / 9.12）。</p>
+    <p class="note">支付二选一：支付宝沙箱跳转（配置密钥后可用），或一键直付（演示/内测，点击即成功，PRD 7.5 / 9.12）。</p>
   </div>
 </template>
 
@@ -305,6 +340,20 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-top: 14px;
+}
+
+.scen-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.pay-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.pay-actions .el-button {
+  flex: 1;
 }
 
 .scen-foot .price {

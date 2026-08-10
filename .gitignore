@@ -35,6 +35,7 @@ Thumbs.db
 
 # Personal files
 简历*.md
+start-moutalk.bat
 
 # Docker
 pgdata/
