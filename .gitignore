@@ -21,6 +21,7 @@ logs/
 uploads/
 pdfs/
 backend/media/
+celerybeat-schedule*
 
 # Node / frontend
 node_modules/
