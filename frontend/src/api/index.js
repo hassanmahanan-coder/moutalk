@@ -23,6 +23,7 @@ export const reportApi = {
   list: () => http.get('/reports'),
   detail: (id) => http.get(`/reports/${id}`),
   compare: (ids) => http.get(`/reports/compare?ids=${ids.join(',')}`),
+  trends: () => http.get('/reports/trends'),
   // 下载 PDF：blob 响应（绕过统一 res.data 拦截）；未就绪抛 {code:'PDF_NOT_READY'}
   async downloadPdf(id) {
     const res = await http.get(`/reports/${id}/pdf`, { responseType: 'blob' })
@@ -47,6 +48,13 @@ export const quotaApi = {
 }
 
 export const notificationApi = {
-  list: (unread = false) => http.get(`/notifications${unread ? '?unread=true' : ''}`),
+  list: (unread = false, type = null) =>
+    http.get(`/notifications${unread ? '?unread=true' : ''}${type ? `&type=${type}` : ''}`),
   markRead: (id) => http.patch(`/notifications/${id}`),
+}
+
+export const adminApi = {
+  stats: () => http.get('/admin/stats'),
+  tacticStats: () => http.get('/admin/tactic-stats'),
+  connections: () => http.get('/admin/connections'),
 }

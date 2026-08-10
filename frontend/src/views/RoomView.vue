@@ -350,6 +350,7 @@ onBeforeUnmount(() => {
       </dl>
       <hr class="gold-rule" />
       <p class="brief">{{ scenario?.briefing }}</p>
+      <p class="compliance">本系统仅用于谈判技巧训练，场景与数据均为模拟设定；请勿在真实商业决策中直接套用。</p>
     </aside>
 
     <section class="table">
@@ -419,6 +420,10 @@ onBeforeUnmount(() => {
         <div class="board-head">
           <h3>报价看板</h3>
           <span class="head-tags">
+            <span class="live-score" :title="'实时评分（PRD 8.2）：' + (neg.lastMeta?.score ?? '--')">
+              当前评分
+              <b>{{ neg.lastMeta?.score != null ? (neg.lastMeta.score * 100).toFixed(0) : '--' }}</b>
+            </span>
             <span v-if="neg.llmMode === 'mock'" class="demo-tag" title="未配置 LLM_API_KEY，当前为规则引擎演示模式">演示</span>
             <span class="conn" :class="{ on: neg.connected }">{{ neg.connected ? '连线中' : '已断开' }}</span>
           </span>
@@ -550,6 +555,16 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.9;
   color: var(--paper-dim);
+}
+
+.compliance {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--paper-faint);
+  border-top: 1px dashed var(--ink-600);
+  padding-top: 10px;
+  letter-spacing: 0.04em;
 }
 
 .table {
@@ -873,6 +888,19 @@ onBeforeUnmount(() => {
 
 .conn.on {
   color: var(--jade);
+}
+
+.live-score {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--paper-faint);
+}
+
+.live-score b {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--gold);
+  margin-left: 4px;
 }
 
 .chart-wrap {

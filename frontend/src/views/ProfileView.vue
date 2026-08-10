@@ -10,18 +10,35 @@ const auth = useAuthStore()
 const quota = ref(null)
 const notifications = ref([])
 const notifLoading = ref(false)
+const filterType = ref('all')
 
 const TYPE_LABEL = { report: '复盘报告', payment: '支付', system: '系统' }
 
-onMounted(async () => {
+async function loadNotifications() {
+  notifLoading.value = true
   try {
-    const [q, n] = await Promise.all([quotaApi.me(), notificationApi.list(true)])
-    quota.value = q
+    const n = await notificationApi.list(true, filterType.value === 'all' ? null : filterType.value)
     notifications.value = n.items
   } catch {
     /* 拦截器已提示 */
+  } finally {
+    notifLoading.value = false
   }
+}
+
+onMounted(async () => {
+  try {
+    quota.value = await quotaApi.me()
+  } catch {
+    /* 拦截器已提示 */
+  }
+  await loadNotifications()
 })
+
+function switchFilter(t) {
+  filterType.value = t
+  loadNotifications()
+}
 
 async function markRead(n) {
   try {
@@ -102,7 +119,13 @@ function expireHint() {
 
     <section class="sec">
       <h2>通知 <span v-if="notifications.length" class="badge">{{ notifications.length }}</span></h2>
-      <div v-if="!notifications.length" class="empty">暂无未读通知</div>
+      <div class="filter-row">
+        <button v-for="t in ['all', 'report', 'payment', 'system']" :key="t" class="f-tab" :class="{ on: filterType === t }" @click="switchFilter(t)">
+          {{ t === 'all' ? '全部' : TYPE_LABEL[t] || t }}
+        </button>
+      </div>
+      <div v-if="notifLoading" class="empty">加载中……</div>
+      <div v-else-if="!notifications.length" class="empty">暂无未读通知</div>
       <div v-else class="notif-list">
         <div v-for="n in notifications" :key="n.id" class="notif" @click="n.payload?.report_id ? openReport(n) : markRead(n)">
           <span class="n-type" :class="n.type">{{ TYPE_LABEL[n.type] || n.type }}</span>
@@ -267,6 +290,36 @@ function expireHint() {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.f-tab {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--paper-dim);
+  background: none;
+  border: 1px solid var(--ink-600);
+  border-radius: 3px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.f-tab:hover {
+  color: var(--paper);
+  border-color: var(--gold-dim);
+}
+
+.f-tab.on {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+  background: rgba(201, 168, 106, 0.08);
 }
 
 .notif {

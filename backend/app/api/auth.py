@@ -105,4 +105,5 @@ def me(user: User = Depends(get_current_user)) -> dict:
         "email": user.email,
         "username": user.username,
         "role": user.role.value,
+        "is_admin": user.is_admin,
     }

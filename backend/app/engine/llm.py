@@ -88,6 +88,10 @@ class BaseLLM(ABC):
     @abstractmethod
     async def ainvoke(self, prompt: str, *, light: bool = False) -> str: ...
 
+    async def astream(self, prompt: str, *, light: bool = False):
+        """流式生成（真流式 PRD 9.4 阶段 2）。默认退化为一次性 ainvoke（Mock 友好）。"""
+        yield await self.ainvoke(prompt, light=light)
+
     async def ainvoke_json(self, prompt: str, *, light: bool = False) -> dict:
         """调用模型并解析 JSON，容忍 markdown 代码块包裹。"""
         raw = await self.ainvoke(prompt, light=light)
@@ -135,6 +139,14 @@ class GLMClient(BaseLLM):
         llm = self._light if light else self._llm
         resp = await llm.ainvoke([HumanMessage(content=prompt)])
         return str(resp.content)
+
+    async def astream(self, prompt: str, *, light: bool = False):
+        """真流式：逐 chunk 产出文本（LangChain ChatOpenAI astream）。"""
+        llm = self._light if light else self._llm
+        async for chunk in llm.astream([HumanMessage(content=prompt)]):
+            content = getattr(chunk, "content", None)
+            if content:
+                yield str(content)
 
 
 class MockLLM(BaseLLM):

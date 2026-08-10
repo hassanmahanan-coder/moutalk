@@ -30,12 +30,14 @@ class NegotiationEngine:
         llm: BaseLLM | None = None,
         checkpointer: Any | None = None,
         rag: Any | None = None,
+        stream_callback: Any | None = None,
     ):
         self.scenario = scenario
         self.llm = llm or build_llm()
         self.checkpointer = checkpointer
         self.rag = rag
-        self.graph = build_graph(self.llm, checkpointer=checkpointer, rag=rag)
+        self.stream_callback = stream_callback
+        self.graph = build_graph(self.llm, checkpointer=checkpointer, rag=rag, stream=stream_callback)
 
     def initial_state(self, session_id: str = "") -> dict:
         return {
@@ -75,7 +77,15 @@ class NegotiationEngine:
         history = list(state.get("history") or [])
         history.append({"role": "user", "content": user_msg})
         if reply:
-            history.append({"role": "assistant", "content": reply})
+            # tactic/bottom_line_status 持久化到消息：管理后台战术统计与回放标注的数据源
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": reply,
+                    "tactic": state.get("selected_tactic", ""),
+                    "bottom_line_status": state.get("bottom_line_status", ""),
+                }
+            )
         state["history"] = history
         state["round"] = state.get("round", 1) + 1
 

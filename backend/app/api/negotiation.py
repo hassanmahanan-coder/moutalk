@@ -66,7 +66,7 @@ async def _stream_text(ws: WebSocket, text: str) -> None:
 
 def _meta_from_state(state: dict) -> dict:
     intent = state.get("intent") or {}
-    return {
+    meta = {
         "type": "meta",
         "tactic": state.get("selected_tactic", ""),
         "tactic_reason": state.get("tactic_reason", ""),
@@ -74,6 +74,18 @@ def _meta_from_state(state: dict) -> dict:
         "round": state.get("round", 1),
         "intent": intent.get("intent_type", "other"),
     }
+    # PRD 8.2 协议字段：实时分数（基于已出报价的即时评分，失败降级 None 不阻断）
+    try:
+        from app.services.report_service import compute_simple_result
+
+        result = compute_simple_result(
+            state.get("scenario") or {}, state.get("offers_json") or []
+        )
+        meta["score"] = round(float(result.get("score", 0.0)), 3)
+    except Exception as exc:  # noqa: BLE001 分数计算失败不影响 meta 推送
+        logger.warning("实时分数计算失败: %s", exc)
+        meta["score"] = None
+    return meta
 
 
 def _simple_result(state: dict) -> dict:
@@ -171,7 +183,11 @@ async def _negotiate_loop(
         return
 
     engine = NegotiationEngine(
-        load_scenario(ns.scenario_id), checkpointer=checkpointer, rag=rag
+        load_scenario(ns.scenario_id),
+        checkpointer=checkpointer,
+        rag=rag,
+        # PRD 9.4 真流式：utterance 节点边生成边转发（重试轮自动退回伪流式）
+        stream_callback=lambda piece: ws.send_json({"type": "token", "text": piece}),
     )
     llm_mode = "mock" if isinstance(engine.llm, MockLLM) else "glm"
 

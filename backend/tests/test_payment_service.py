@@ -126,3 +126,29 @@ class TestProcessPaidCallback:
         )
         session.refresh(o2)
         assert o2.status == OrderStatus.PENDING
+
+    def test_callback_creates_payment_notification(self, session, user):
+        """支付成功落库离线通知（PRD 9.15：事件无论在线与否都落库）。"""
+        from app.models import Notification, NotificationType
+
+        order = self._subscribe_order(session, user)
+        assert process_paid_callback(session, order.out_trade_no, "alipay-tx-7", 199.0) is True
+        n = session.scalar(
+            select(Notification).where(
+                Notification.user_id == user.id,
+                Notification.type == NotificationType.PAYMENT,
+            )
+        )
+        assert n is not None
+        assert n.title
+        assert n.payload_json["out_trade_no"] == order.out_trade_no
+
+    def test_callback_notification_idempotent(self, session, user):
+        """同一订单重复回调（幂等路径）不产生重复通知。"""
+        from app.models import Notification
+
+        order = self._subscribe_order(session, user)
+        assert process_paid_callback(session, order.out_trade_no, "alipay-tx-8", 199.0) is True
+        assert process_paid_callback(session, order.out_trade_no, "alipay-tx-8", 199.0) is True
+        count = len(session.scalars(select(Notification)).all())
+        assert count == 1

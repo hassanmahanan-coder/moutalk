@@ -10,6 +10,8 @@ const routes = [
   { path: '/reports', name: 'reports', component: () => import('../views/ReportsView.vue'), meta: { title: '复盘报告' } },
   { path: '/reports/compare/:ids', name: 'report-compare', component: () => import('../views/ReportCompareView.vue'), meta: { title: '报告对比' } },
   { path: '/reports/:id', name: 'report-detail', component: () => import('../views/ReportDetailView.vue'), meta: { title: '报告详情' } },
+  { path: '/trends', name: 'trends', component: () => import('../views/TrendsView.vue'), meta: { title: '进步曲线' } },
+  { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { title: '管理后台' } },
   { path: '/payment', name: 'payment', component: () => import('../views/PaymentView.vue'), meta: { title: '升级 Pro' } },
   { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: '个人中心' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },

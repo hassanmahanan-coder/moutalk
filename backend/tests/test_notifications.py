@@ -74,6 +74,17 @@ class TestNotificationService:
         assert len(items) == 2
         assert all(n["read_at"] is None for n in items)
 
+    def test_list_filter_by_type(self, session, user_id):
+        """PRD 7.6：按类型筛选通知。"""
+        notification_service.create_notification(session, user_id, "system", "公告", {"x": 1})
+        notification_service.create_notification(session, user_id, "report", "报告", {"rid": "1"})
+        notification_service.create_notification(session, user_id, "payment", "支付", {"oid": "1"})
+        session.commit()
+        items = notification_service.list_notifications(session, user_id, type_="report")
+        assert [n["type"] for n in items] == ["report"]
+        items = notification_service.list_notifications(session, user_id, type_="system")
+        assert [n["type"] for n in items] == ["system"]
+
     def test_mark_read(self, session, user_id):
         n = notification_service.create_notification(session, user_id, "system", "公告", {"x": 1})
         session.commit()
@@ -114,6 +125,18 @@ class TestNotificationAPI:
         r = client.get("/api/notifications?unread=true", headers=auth)
         assert r.status_code == 200
         assert len(r.json()["items"]) == 1
+
+    def test_list_filter_by_type_api(self, client, auth, session, user_id):
+        notification_service.create_notification(session, user_id, "system", "公告", {"x": 1})
+        notification_service.create_notification(session, user_id, "report", "报告", {"rid": "1"})
+        session.commit()
+        r = client.get("/api/notifications?type=report", headers=auth)
+        assert r.status_code == 200
+        items = r.json()["items"]
+        assert len(items) == 1
+        assert items[0]["type"] == "report"
+        r = client.get("/api/notifications?type=payment", headers=auth)
+        assert r.json()["items"] == []
 
     def test_mark_read_api(self, client, auth, session, user_id):
         n = notification_service.create_notification(session, user_id, "system", "公告", {"x": 1})

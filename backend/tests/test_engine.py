@@ -81,6 +81,53 @@ class TestFullRound:
         s = await eng.run_round(s, "太贵了")
         assert s["used_tactics"][-1] == "false_bottom"  # 攻击性强 → 虚假底线
 
+    async def test_history_message_carries_tactic_and_bottom_line(self, scenario):
+        """回放/战术统计的数据源：assistant 消息必须带 tactic 与底线状态字段。"""
+        eng = NegotiationEngine(scenario, llm=FakeLLM(["报价：185 万。"]))
+        s = eng.initial_state("s6")
+        s["round"] = 2
+        s = await eng.run_round(s, "太贵了")
+        assert len(s["history"]) == 2
+        assistant = s["history"][1]
+        assert assistant["role"] == "assistant"
+        assert assistant["tactic"] == "false_bottom"
+        assert assistant["bottom_line_status"] == "ok"
+
+    async def test_true_streaming_callback_receives_full_reply(self, scenario):
+        """真流式（PRD 9.4 阶段 2）：stream callback 收到的片段拼接 == 最终 reply。"""
+        collected: list[str] = []
+
+        async def stream(piece: str) -> None:
+            collected.append(piece)
+
+        eng = NegotiationEngine(
+            scenario,
+            llm=FakeLLM(["报价：185 万，付款周期：60 天。"]),
+            stream_callback=stream,
+        )
+        s = eng.initial_state("s7")
+        s = await eng.run_round(s, "报价 200 万可以吗？")
+        assert collected, "流式应产出至少一片"
+        assert "".join(collected) == s["reply"]
+        assert s["bottom_line_status"] == "ok"  # 流式不破坏底线检查
+
+    async def test_streaming_retry_uses_non_stream_path(self, scenario):
+        """重试轮（retry_count>0）不流式（避免已展示文本残影）。"""
+        collected: list[str] = []
+
+        async def stream(piece: str) -> None:
+            collected.append(piece)
+
+        eng = NegotiationEngine(
+            scenario,
+            llm=FakeLLM(["报价：170 万", "报价：185 万"]),
+            stream_callback=stream,
+        )
+        s = eng.initial_state("s8")
+        s = await eng.run_round(s, "报价 200 万")
+        assert collected, "首轮正常流式"
+        assert s["retry_count"] == 1
+
 
 class TestBottomLineRetry:
     async def test_retry_then_pass(self, scenario):

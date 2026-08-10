@@ -63,11 +63,14 @@ def list_notifications(
     db: Session,
     user_id: uuid.UUID,
     unread_only: bool = False,
+    type_: str | NotificationType | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     query = select(Notification).where(Notification.user_id == user_id)
     if unread_only:
         query = query.where(Notification.read_at.is_(None))
+    if type_ is not None:
+        query = query.where(Notification.type == NotificationType(type_))
     rows = db.scalars(query.order_by(Notification.created_at.desc()).limit(limit)).all()
     return [
         {

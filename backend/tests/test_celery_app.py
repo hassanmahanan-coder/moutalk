@@ -38,7 +38,28 @@ class TestCeleryAppConfig:
 
         assert "generate_full_report" in celery_app.tasks
         assert "export_pdf" in celery_app.tasks
-        assert "reconcile_pending_payments" in celery_app.tasks
+
+    def test_beat_schedule_has_notification_cleanup(self):
+        """PRD 9.15：通知 30 天清理必须注册进 Celery beat。"""
+        from app.celery_app import app as celery_app
+
+        schedule = celery_app.conf.beat_schedule
+        assert "cleanup-notifications" in schedule, "beat 应注册通知清理任务"
+        assert schedule["cleanup-notifications"]["task"] == "cleanup_notifications"
+
+    def test_cleanup_task_runs_expired_cleanup(self):
+        """清理任务实际调用 notification_service.cleanup_expired。"""
+        from app.celery_app import cleanup_notifications
+        from app.services.notification_service import DEFAULT_EXPIRE_DAYS
+
+        with patch(
+            "app.services.notification_service.cleanup_expired",
+            return_value=7,
+        ) as m:
+            result = cleanup_notifications()
+        m.assert_called_once()
+        assert m.call_args.kwargs["days"] == DEFAULT_EXPIRE_DAYS
+        assert result == 7
 
     def test_beat_schedule_has_reconcile(self):
         from app.celery_app import app as celery_app
@@ -142,6 +163,27 @@ class TestRunFullReport:
 
         assert report.subjective_json["dimensions"] == {}
         assert float(report.total_score) == round(0.6 * report.objective_json["total"], 2)
+
+    async def test_creates_report_notification(self, ns, session):
+        """生产路径（Celery worker）报告完成后必须落库通知（PRD 9.15 双写）。"""
+        from sqlalchemy import select
+        from sqlalchemy.orm import sessionmaker
+
+        from app.models import Notification, NotificationType
+
+        Session = sessionmaker(bind=session.get_bind(), autoflush=False)
+
+        await run_full_report(Session, ns.id)
+
+        session.expire_all()
+        n = session.scalar(
+            select(Notification).where(
+                Notification.user_id == ns.user_id,
+                Notification.type == NotificationType.REPORT,
+            )
+        )
+        assert n is not None
+        assert n.payload_json["session_id"] == str(ns.id)
 
 
 class TestGenerateFullReportTask:

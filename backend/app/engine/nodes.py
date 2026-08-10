@@ -161,7 +161,7 @@ def _dim_hints(scenario: dict) -> str:
     return " ".join(hints)
 
 
-async def utterance_node(state: NegotiationState, llm: BaseLLM, rag=None) -> dict:
+async def utterance_node(state: NegotiationState, llm: BaseLLM, rag=None, stream=None) -> dict:
     scenario = state.get("scenario") or {}
     tactic = state.get("selected_tactic") or DEFAULT_TACTIC
     tactic_prompt = TACTIC_PROMPTS.get(tactic, TACTIC_PROMPTS[DEFAULT_TACTIC])
@@ -196,7 +196,18 @@ async def utterance_node(state: NegotiationState, llm: BaseLLM, rag=None) -> dic
         retry_hint=retry_hint,
         dim_hints=_dim_hints(scenario),
     )
-    reply = await llm.ainvoke(prompt)
+    # 真流式（PRD 9.4 阶段 2）：非重试轮边生成边转发；重试轮不流式（避免文本残影）
+    if stream is not None and not state.get("retry_count"):
+        parts: list[str] = []
+        async for piece in llm.astream(prompt):
+            parts.append(piece)
+            try:
+                await stream(piece)
+            except Exception as exc:  # noqa: BLE001 转发失败不阻断生成
+                logger.warning("流式转发失败: %s", exc)
+        reply = "".join(parts)
+    else:
+        reply = await llm.ainvoke(prompt)
     return {"reply": reply.strip()}
 
 
@@ -285,12 +296,12 @@ def fallback_node(state: NegotiationState) -> dict:
 Node = Callable[[NegotiationState, BaseLLM], Awaitable[dict]] | Callable[[NegotiationState], dict]
 
 
-def build_graph(llm: BaseLLM, checkpointer=None, rag=None):
+def build_graph(llm: BaseLLM, checkpointer=None, rag=None, stream=None):
     from langgraph.graph import END, START, StateGraph
 
     async def _intent(state): return await intent_node(state, llm)
     async def _tactic(state): return await tactic_node(state, llm)
-    async def _utterance(state): return await utterance_node(state, llm, rag=rag)
+    async def _utterance(state): return await utterance_node(state, llm, rag=rag, stream=stream)
 
     def _route(state: NegotiationState) -> str:
         if state.get("reply_blocked"):

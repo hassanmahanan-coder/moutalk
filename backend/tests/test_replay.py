@@ -112,3 +112,28 @@ def test_replay_other_user_forbidden(client, auth, session, user_id):
 def test_replay_not_found(client, auth):
     r = client.get("/api/sessions/00000000-0000-0000-0000-000000000000/replay", headers=auth)
     assert r.status_code == 404
+
+
+def test_replay_tactic_from_real_engine(client, auth, session, user_id):
+    """端到端：真实引擎一轮持久化 → 回放带战术与底线状态（非注入假数据）。"""
+    import asyncio
+
+    from app.engine.engine import NegotiationEngine
+    from app.engine.llm import MockLLM
+    from app.scenarios import load_scenario
+    from app.services.session_store import create_session, save_round
+
+    ns = create_session(session, user_id, "it_procurement")
+    session.commit()
+
+    eng = NegotiationEngine(load_scenario("it_procurement"), llm=MockLLM())
+    state = eng.initial_state(str(ns.id))
+    state = asyncio.run(eng.run_round(state, "报价 200 万可以吗？"))
+    save_round(session, ns.id, state)
+    session.commit()
+
+    r = client.get(f"/api/sessions/{ns.id}/replay", headers=auth)
+    assert r.status_code == 200
+    r0 = r.json()["rounds"][0]
+    assert r0["tactic"], "回放应含引擎实际使用的战术"
+    assert r0["bottom_line_status"], "回放应含底线状态"

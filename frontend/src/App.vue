@@ -29,8 +29,10 @@ function logout() {
       <nav class="nav">
         <router-link to="/" :class="{ active: route.name === 'lobby' }">场景大厅</router-link>
         <router-link to="/reports" :class="{ active: route.name === 'reports' || route.name === 'report-detail' }">复盘报告</router-link>
+        <router-link to="/trends" :class="{ active: route.name === 'trends' }">进步曲线</router-link>
         <router-link to="/profile" :class="{ active: route.name === 'profile' }">个人中心</router-link>
         <router-link to="/payment" :class="{ active: route.name === 'payment' }">升级 Pro</router-link>
+        <router-link v-if="auth.user?.is_admin" to="/admin" :class="{ active: route.name === 'admin' }">管理后台</router-link>
       </nav>
       <div class="user">
         <span class="role-badge" :class="auth.isPro ? 'pro' : 'free'">

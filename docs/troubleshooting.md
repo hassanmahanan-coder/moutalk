@@ -460,3 +460,37 @@ egotiation.py / eports.py：dev 环境（app_env=dev）直接同步生成报告
 - **测试适配**：全库 login 调用 `email` 字段 → `account`（批量脚本派生 username 注入 register 调用；短用户名 "ws"/"me"/"a"/"b" 不足 3 位需补足）；迁移测试版本号 8884346523fb → b9239a8602ae。
 - **验证**：新增 service 6 例 + API 4 例（缺 username 422/重复用户名 409/用户名登录/me 含 username）；真实 API：用户名注册→用户名登录 200→邮箱登录兼容→老用户兼容→重复 409→缺字段 422 全通；全量 388 passed；ruff clean；前端 build 通过。
 - **注意**：老用户（username 为 NULL）只能邮箱登录；Redis 失败锁定 key 按 account（邮箱或用户名）分别计数，不影响安全。
+
+## 45. 完成度核查整改：战术持久化 + 通知闭环 + 前端两页
+
+- **状态**：已实现（394 passed）
+- **背景**：对照 PRD v4.0 全量核查（见上条核查清单），按用户批准的建议修复硬缺口并补齐前端。
+- **实现**：
+  1. **#1#2 战术/底线字段持久化**：`engine.py _finalize_round` 写 history 时 assistant 消息追加 `tactic`（selected_tactic）+ `bottom_line_status` 字段 → 管理后台战术命中分布（`admin_tactic_stats` 只聚合 REPORTED 会话）与回放标注（`replay_service`）数据源同时打通。新增 3 个端到端测试（引擎级 + admin 真实引擎 + replay 真实引擎）。
+  2. **#3 支付成功通知**：`process_paid_callback` 订单 commit 后落库 payment 通知（payload 含 order_id/out_trade_no，幂等防重；通知失败回滚不阻断支付）。新增 2 测试。
+  3. **#4 Celery 报告完成通知**：`run_full_report` 生成报告后落库 report 通知（worker 无 WS 通道，靠拉取）。新增 1 测试；关键坑：第二次 commit 使 report 对象 expire，返回前需 `db.refresh(report)` 防 detached lazy load。
+  4. **#6 进步曲线前端**：TrendsView.vue（ECharts 总分/客观/主观三线 + insufficient 空态"去开局"）+ 路由 /trends + 导航入口。
+  5. **#7 管理后台前端**：AdminView.vue（KPI 六卡 + 战术命中横向条形图 + 在线连接 + 403 空态）+ 路由 /admin + 导航仅 is_admin 可见（`/me` 新增 is_admin 字段）。
+- **验证**：真实 API 端到端：mock 回调 → payment 通知落库；/me is_admin；普通用户 admin 403；trends 空态；全量 394 passed；ruff clean；前端 build 通过。
+- **注意**：`C:\Temp\opencode` 临时目录曾被清理（restart_backend.ps1 等脚本丢失），重启后端直接用 `Start-Process .venv python -m uvicorn app.main:app --port 8765`。
+
+## 46. 阶段 2 增强：实时分数 + 合规声明 + 审计日志 + 通知筛选 + 真流式
+
+- **状态**：已实现（402 passed）
+- **实现**：
+  1. **#8 实时分数**：`_meta_from_state`（negotiation.py）按 PRD 8.2 协议补 `score` 字段——基于已出报价调 `compute_simple_result`（失败降级 None 不阻断）；前端 RoomView 看板新增"当前评分"数字显示。test_meta_score 3 例。
+  2. **#9 谈判室合规声明**：RoomView 背景侧栏加"本系统仅用于谈判技巧训练，场景与数据均为模拟设定"声明（PRD 9.14）。
+  3. **#10 审计日志接入**：三个 admin API（stats/tactic-stats/connections）调用 `log_admin_action` 落 admin_audit_log。+1 测试。
+  4. **#11 通知类型筛选**：`list_notifications` 加 `type_` 参数（service + `?type=` API）；ProfileView 加"全部/复盘报告/支付/系统"筛选 tab。+2 测试。
+  5. **真流式（PRD 9.4 阶段 2）**：`BaseLLM.astream`（GLMClient 用 ChatOpenAI.astream 逐 chunk；默认退化为一次性 ainvoke 兼容 Mock）；`utterance_node` 接受 stream 回调边生成边转发（**重试轮 retry_count>0 自动退回非流式**，避免文本残影）；`NegotiationEngine`/`build_graph` 透传；negotiation.py 传 `ws.send_json(token)`。+2 测试。
+- **验证**：真实 GLM WS 端到端：meta.score=0.636 ✓；token 47 片 > 伪流式 30 片上限（真流式确认）✓；全量 402 passed；ruff clean；前端 build 通过。
+- **注意**：① 本机存在外部守护会以 Miniconda python 自动拉起 uvicorn（与 .venv 实例并存，同秒启动），杀进程后需尽快验证监听者；旧代码进程不更新，改码后务必确认 8765 监听者创建时间晚于代码修改。② 真流式仅作用于 utterance 节点；意图/战术/教练仍走一次性调用（满足首 token 延迟优化目标）。
+
+## 47. 通知清理调度 + 部署资产守卫
+
+- **状态**：已实现（409 passed）
+- **实现**：
+  1. **#5 通知 30 天清理调度**（PRD 9.15 最后缺口）：celery_app.py 新增 `cleanup_notifications` 任务（每日清理 30 天前未读通知）+ beat_schedule 注册 `cleanup-notifications`（86400s）。+2 测试。
+  2. **部署资产守卫**（核查风险 4）：新增 test_deploy_assets.py 5 例——Caddyfile 反代含 WS 端点 / 生产 compose 含 caddy/fastapi/celery_worker/milvus-standalone / backup.sh 基于 pg_dump / .env.prod.example 关键键 / TermsView 存在。防止部署关键文件误删退化。
+- **验证**：全量 409 passed；ruff clean；此前 402 项（战术持久化/通知闭环/趋势与管理前端/实时分数/合规/审计/筛选/真流式）全部保持通过。
+- **至此**：PRD v4.0 全部可验证功能点落地；剩余仅为外部依赖（支付宝沙箱 502、SMTP 实配）与范围外规划（Puppeteer 排版升级、飞书 Bot、多人对抗、i18n 等）。

@@ -21,11 +21,14 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 @router.get("")
 def list_notifications(
     unread: bool = False,
+    type: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """拉取通知列表（unread=true 仅未读，PRD 7.6）。"""
-    items = notification_service.list_notifications(db, current_user.id, unread_only=unread)
+    """拉取通知列表（unread=true 仅未读；type 按类型筛选，PRD 7.6）。"""
+    items = notification_service.list_notifications(
+        db, current_user.id, unread_only=unread, type_=type
+    )
     return {"items": items}
 
 

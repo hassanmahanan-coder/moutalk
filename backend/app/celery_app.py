@@ -44,6 +44,11 @@ app.conf.beat_schedule = {
         "schedule": 3600.0,  # 每小时主动对账一次（PRD 7.5）
         "options": {"expires": 1800.0},
     },
+    "cleanup-notifications": {
+        "task": "cleanup_notifications",
+        "schedule": 86400.0,  # 每日清理 30 天前未读通知（PRD 9.15）
+        "options": {"expires": 43200.0},
+    },
 }
 
 
@@ -67,3 +72,12 @@ def reconcile_pending_payments_task(timeout_minutes: int = 30) -> dict:
     """
     with SessionLocal() as db:
         return reconcile_pending_payments(db, query_order=None, timeout_minutes=timeout_minutes)
+
+
+@app.task(name="cleanup_notifications")
+def cleanup_notifications() -> int:
+    """每日清理 30 天前未读通知（PRD 9.15，Celery beat 调度）。"""
+    from app.services.notification_service import DEFAULT_EXPIRE_DAYS, cleanup_expired
+
+    with SessionLocal() as db:
+        return cleanup_expired(db, days=DEFAULT_EXPIRE_DAYS)

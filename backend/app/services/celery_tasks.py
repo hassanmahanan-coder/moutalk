@@ -48,7 +48,30 @@ async def run_full_report(
             return {}
 
     with session_factory() as db:
-        return await generate_report(db, session_id, judge=_safe_judge)
+        report = await generate_report(db, session_id, judge=_safe_judge)
+        # PRD 9.15 双写：报告完成后落库离线通知（worker 无 WS 通道，靠拉取）
+        try:
+            from app.models import NegotiationSession
+            from app.services.notification_service import create_notification
+
+            ns = db.get(NegotiationSession, session_id)
+            if ns is not None:
+                create_notification(
+                    db,
+                    ns.user_id,
+                    "report",
+                    "复盘报告已生成",
+                    {
+                        "session_id": str(session_id),
+                        "report_id": str(report.id),
+                    },
+                )
+                db.commit()
+        except Exception as exc:  # noqa: BLE001 通知失败不阻断报告
+            logger.warning("报告完成通知落库失败: %s", exc)
+            db.rollback()
+        db.refresh(report)  # 属性加载齐全后再返回（防 detached lazy load）
+        return report
 
 
 def _curve_image_bytes(curve: list[dict]) -> bytes | None:

@@ -23,6 +23,7 @@ def stats(
     admin: User = Depends(get_admin_user),
 ) -> dict:
     """核心 KPI（PRD 8.9）。"""
+    admin_service.log_admin_action(db, admin.id, "view_stats")
     return admin_service.admin_stats(db)
 
 
@@ -32,12 +33,15 @@ def tactic_stats(
     admin: User = Depends(get_admin_user),
 ) -> dict:
     """战术命中分布（PRD 8.9 / 9.7 监控）。"""
+    admin_service.log_admin_action(db, admin.id, "view_tactic_stats")
     return admin_service.admin_tactic_stats(db)
 
 
 @router.get("/connections")
 def connections(
+    db: Session = Depends(get_db),
     admin: User = Depends(get_admin_user),
 ) -> dict:
     """实时 WebSocket 连接数（PRD 8.9）。"""
+    admin_service.log_admin_action(db, admin.id, "view_connections")
     return admin_service.admin_connections()
