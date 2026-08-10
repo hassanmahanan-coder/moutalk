@@ -57,4 +57,8 @@ export const adminApi = {
   stats: () => http.get('/admin/stats'),
   tacticStats: () => http.get('/admin/tactic-stats'),
   connections: () => http.get('/admin/connections'),
+  users: () => http.get('/admin/users'),
+  updateUserRole: (id, patch) => http.patch(`/admin/users/${id}`, patch),
+  scenarios: () => http.get('/admin/scenarios'),
+  updateScenario: (id, patch) => http.patch(`/admin/scenarios/${id}`, patch),
 }

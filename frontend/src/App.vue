@@ -1,19 +1,65 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElNotification } from 'element-plus'
 import { useAuthStore } from './stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+let notifWs = null
+let notifReconnectTimer = null
 
 onMounted(() => {
   if (auth.isLoggedIn && !auth.user) {
     auth.fetchMe().catch(() => {})
   }
+  if (auth.isLoggedIn) connectNotifications()
 })
 
+onBeforeUnmount(() => {
+  clearTimeout(notifReconnectTimer)
+  notifWs?.close()
+})
+
+function connectNotifications() {
+  // PRD 9.15 全局通知推送通道：登录后常驻，收到支付/报告事件弹提醒
+  const token = localStorage.getItem('mt_access')
+  if (!token || notifWs?.readyState === WebSocket.OPEN) return
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  notifWs = new WebSocket(`${proto}://${location.host}/api/notifications/ws?token=${token}`)
+  notifWs.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data)
+      if (msg.type === 'notification' && msg.notification) {
+        const n = msg.notification
+        const isReport = n.type === 'report'
+        ElNotification({
+          title: n.title || '新通知',
+          message: isReport ? '复盘报告已生成，点击查看' : n.title,
+          type: isReport ? 'success' : 'info',
+          onClick: () => {
+            if (isReport && n.report_id) router.push({ name: 'report-detail', params: { id: n.report_id } })
+          },
+        })
+      }
+    } catch {
+      /* 忽略无法解析的消息 */
+    }
+  }
+  notifWs.onclose = () => {
+    // 断线重连（10s 后，避免风暴）
+    clearTimeout(notifReconnectTimer)
+    notifReconnectTimer = setTimeout(() => {
+      if (auth.isLoggedIn) connectNotifications()
+    }, 10000)
+  }
+  notifWs.onerror = () => notifWs?.close()
+}
+
 function logout() {
+  notifWs?.close()
+  notifWs = null
   auth.logout()
   router.push({ name: 'login' })
 }

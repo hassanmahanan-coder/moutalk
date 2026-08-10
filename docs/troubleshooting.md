@@ -494,3 +494,35 @@ egotiation.py / eports.py：dev 环境（app_env=dev）直接同步生成报告
   2. **部署资产守卫**（核查风险 4）：新增 test_deploy_assets.py 5 例——Caddyfile 反代含 WS 端点 / 生产 compose 含 caddy/fastapi/celery_worker/milvus-standalone / backup.sh 基于 pg_dump / .env.prod.example 关键键 / TermsView 存在。防止部署关键文件误删退化。
 - **验证**：全量 409 passed；ruff clean；此前 402 项（战术持久化/通知闭环/趋势与管理前端/实时分数/合规/审计/筛选/真流式）全部保持通过。
 - **至此**：PRD v4.0 全部可验证功能点落地；剩余仅为外部依赖（支付宝沙箱 502、SMTP 实配）与范围外规划（Puppeteer 排版升级、飞书 Bot、多人对抗、i18n 等）。
+
+## 48. 收尾四连：通知实时推送 + 用户管理 + 恢复演练 + CI 真实链路
+
+- **状态**：已实现（426 passed）
+- **实现**：
+  1. **#1 通知 WS 实时推送**（PRD 9.15 双写闭环）：ws_manager 加 `send_to_user(user_id)`（user_id→session 映射，同用户多连接/重连处理）；新增全局通知通道 `GET /api/notifications/ws?token=`（JWT 校验 + notif:{uid} 会话 + 心跳保活）；支付成功（api/payment.py notify 后）与报告完成（dev 路径）推送 `{type:'notification'}`；前端 App.vue 登录后常驻连接 + 断线 10s 重连 + ElNotification 弹窗（报告可点击跳详情）。+4 测试。
+  2. **#2 管理后台用户管理**：`GET /api/admin/users`（列表不含密码哈希）+ `PATCH /api/admin/users/{id}`（角色 free/pro/enterprise，**禁止修改自己**防自降绕过鉴权，非法角色 422）+ 审计日志 update_user_role；AdminView 加"用户管理"tab（表格 + 角色下拉）。+7 测试。
+  3. **#3 备份恢复演练**：backup.sh 加 `--restore <file.sql>` 模式（psql 恢复容器库）；backup-README.md 补完整演练流程（备份→恢复→验证→回滚）+ OSS 扩展说明。+2 守卫测试。
+  4. **#4 CI 真实链路**：新增 `backend/scripts/llm_smoke.py`（GLMClient ainvoke/light/astream 三链路，90s 超时，CI 配置 LLM_API_KEY 时运行）；ci.yml 加 smoke 步骤（`if: secrets.LLM_API_KEY != ''`）。+2 守卫测试。
+- **验证**：全量 426 passed；ruff clean；前端 build 通过。
+- **注意**：① 通知推送仅限 API 进程（Celery worker 无 WS 通道，报告完成生产路径靠落库+前端拉取，dev 路径已推送）。② llm_smoke 本地实测网关响应慢（opencode.ai 可达性受网络影响），已加 90s 超时优雅失败。③ test_notifications.py 修一处历史笔误 `uuid4()` → `uuid.uuid4()`。
+
+## 49. 前端自动化测试 + 管理后台场景管理
+
+- **状态**：已实现（后端 433 passed + 前端 13 passed）
+- **实现**：
+  1. **前端测试体系**（vitest + @vue/test-utils + jsdom）：`vitest.config.js` + `npm run test`；3 个测试文件 13 例——api 层（authApi/notificationApi type 筛选/paymentApi/adminApi 路径参数）、auth store（login/register/isPro/logout）、LoginView 组件（渲染/空表单校验/登录提交，element-plus 组件用带 v-model 转发的 stub）。CI frontend job 增加 vitest 步骤。
+  2. **管理后台场景管理**（PRD 9.16 扩展）：Scenario 模型加 `on_sale` 列（迁移 360f036d2731，dev 库已 ALTER）；`GET /api/admin/scenarios`（管理列表）+ `PATCH /api/admin/scenarios/{id}`（price/on_sale，负价 422）+ 审计日志；**用户端 list/detail 过滤 on_sale=false**（下架即对用户隐藏）；AdminView 新增"场景管理"tab（定价/上下架按钮）。+7 后端测试 +2 场景过滤测试。
+- **验证**：后端 433 passed；ruff clean；前端 build + 13 vitest passed；实测用户端在售列表正常。
+- **注意**：管理员账号——dev 库已将 `3137504285@qq.com`（用户名 mou）设为 is_admin=true，登录后导航栏出现"管理后台"。
+
+## 50. 管理后台全链路修复：pydantic 差异 + is_admin 设置能力
+
+- **状态**：已实现（436 passed + 前端 13 passed）
+- **问题**：① 用户管理「设置会员」接口在运行环境 500（`'str' object has no attribute 'value'`），但测试（.venv）通过；② 无「设置管理员」能力。
+- **根因**：本机 uvicorn 存在 .venv 与 Miniconda 双环境实例（外部守护拉起 Miniconda 版），**Miniconda 环境的 pydantic 将 str-枚举请求体解析为 str**（v1 行为），而 .venv 的 pydantic v2 解析为枚举成员 → `req.role.value` 崩溃；且 service 把 str 赋给 Enum 列后读回类型不确定，API 响应 `user.role.value` 再次崩溃。
+- **解决方案**：
+  1. admin.py 兼容两种解析：`role_value = req.role.value if isinstance(req.role, UserRole) else str(req.role)`；空更新（role 与 is_admin 均空）422。
+  2. admin_service 统一 `user.role = UserRole(role) if isinstance(role, str) else role`（读回恒为枚举，响应安全）。
+  3. **新增 is_admin 设置**：UpdateUserRoleRequest 加 `is_admin: bool | None`；service 支持；**防自改（管理员不可修改自己的 role/is_admin，400）**保留；响应含 is_admin；前端用户管理行加"设为/取消管理员"按钮 + 管理员列（自己行隐藏操作）。
+- **验证**：全链路实测——设管理员→新管理员登录 is_admin=True+访问 200→收回→403→自改 400→角色+管理员同改 200；定价/下架/上架/用户端过滤全通；后端 436 passed（+2 is_admin 测试 +1 空更新）+ ruff clean；前端 13 passed + build 通过。
+- **注意**：本机双 Python 环境（.venv/Miniconda）会导致同一代码在不同实例上行为差异（pydantic/SQLAlchemy 版本），排查时先确认 8765 监听者环境；管理后台角色/管理员修改均写 admin_audit_log。

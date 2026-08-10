@@ -29,6 +29,16 @@ def test_backup_script_exists_and_uses_pg_dump():
     assert script.is_file(), "backup.sh 缺失（PRD 9.20）"
     text = script.read_text(encoding="utf-8")
     assert "pg_dump" in text, "备份脚本应基于 pg_dump"
+    assert "--restore" in text, "备份脚本应支持恢复演练模式"
+    assert "psql" in text, "恢复模式应使用 psql"
+
+
+def test_backup_readme_has_recovery_drill():
+    readme = ROOT / "deploy" / "backup-README.md"
+    assert readme.is_file(), "backup-README.md 缺失"
+    text = readme.read_text(encoding="utf-8")
+    assert "恢复演练" in text, "README 应含恢复演练流程（PRD 9.20 流程项）"
+    assert "--restore" in text
 
 
 def test_prod_env_example_has_required_keys():
@@ -42,3 +52,18 @@ def test_prod_env_example_has_required_keys():
 def test_terms_views_exist():
     terms = ROOT / "frontend" / "src" / "views" / "TermsView.vue"
     assert terms.is_file(), "TermsView.vue 缺失（故事 8 协议/隐私）"
+
+
+def test_llm_smoke_script_exists():
+    script = ROOT / "backend" / "scripts" / "llm_smoke.py"
+    assert script.is_file(), "llm_smoke.py 缺失（CI 真实网关验证）"
+    text = script.read_text(encoding="utf-8")
+    assert "GLMClient" in text
+    assert "astream" in text, "smoke 应覆盖真流式链路"
+
+
+def test_ci_has_llm_smoke_step():
+    ci = ROOT / ".github" / "workflows" / "ci.yml"
+    assert ci.is_file()
+    text = ci.read_text(encoding="utf-8")
+    assert "llm_smoke.py" in text, "CI 应含 LLM smoke 步骤（有密钥时）"

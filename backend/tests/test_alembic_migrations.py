@@ -97,7 +97,7 @@ class TestMigrateUpgrade:
         assert result.returncode == 0, result.stderr
         tables = _table_names(mig_db_url)
         assert EXPECTED_TABLES <= tables
-        assert _alembic_version(mig_db_url) == "b9239a8602ae"
+        assert _alembic_version(mig_db_url) == "360f036d2731"
 
     def test_alembic_check_no_drift(self, mig_db_url):
         """守卫：模型 metadata 与迁移脚本一致，模型改动必须生成新迁移。"""

@@ -81,6 +81,16 @@ jobs:
         env:
           MOUTALK_TEST_DB_URL: postgresql+psycopg://moutalk:moutalk_dev_pw@localhost:5432/moutalk_migtest
 
+      - name: LLM smoke test (real gateway, when key provided)
+        working-directory: backend
+        if: ${{ secrets.LLM_API_KEY != '' }}
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          LLM_LIGHT_MODEL: ${{ secrets.LLM_LIGHT_MODEL }}
+        run: python scripts/llm_smoke.py
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -96,6 +106,10 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Unit tests (vitest)
+        working-directory: frontend
+        run: npm run test
 
       - name: Build
         working-directory: frontend

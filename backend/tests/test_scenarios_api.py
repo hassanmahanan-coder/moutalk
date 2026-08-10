@@ -61,3 +61,29 @@ def test_get_scenario_404(client, seeded):
     r = client.get("/api/scenarios/nonexistent")
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "SCENARIO_NOT_FOUND"
+
+
+def test_list_hides_off_sale_scenarios(client, seeded, session):
+    """下架场景对用户不可见（管理后台上下架，PRD 9.16 扩展）。"""
+    from sqlalchemy import select
+
+    from app.models import Scenario
+
+    sc = session.scalar(select(Scenario).where(Scenario.id == "salary"))
+    sc.on_sale = False
+    session.commit()
+    items = client.get("/api/scenarios").json()["items"]
+    ids = [s["id"] for s in items]
+    assert "salary" not in ids
+    assert "it_procurement" in ids
+
+
+def test_get_off_sale_detail_404(client, seeded, session):
+    from sqlalchemy import select
+
+    from app.models import Scenario
+
+    sc = session.scalar(select(Scenario).where(Scenario.id == "salary"))
+    sc.on_sale = False
+    session.commit()
+    assert client.get("/api/scenarios/salary").status_code == 404

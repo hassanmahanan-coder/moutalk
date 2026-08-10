@@ -35,6 +35,9 @@ class Scenario(Base):
     config_json: Mapped[dict] = mapped_column(JSON)
     price: Mapped[Numeric | None] = mapped_column(Numeric(10, 2))
     is_free: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    on_sale: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )  # 管理后台上下架（PRD 9.16 扩展）：下架后用户端不可见/不可购
 
 
 class UserScenarioAccess(Base):

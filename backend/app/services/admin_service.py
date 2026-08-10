@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AdminAuditLog, NegotiationSession, Report, SessionStatus, User
+from app.models import AdminAuditLog, NegotiationSession, Report, SessionStatus, User, UserRole
 from app.services.ws_manager import get_ws_manager
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,47 @@ def admin_tactic_stats(db: Session) -> dict[str, Any]:
 def admin_connections() -> dict[str, Any]:
     """实时 WebSocket 连接数（PRD 8.9）。"""
     return {"online": len(get_ws_manager().connections)}
+
+
+def admin_list_users(db: Session, limit: int = 100) -> list[dict[str, Any]]:
+    """用户列表（管理员）：不暴露密码哈希（PRD 9.16 数据安全）。"""
+    rows = db.scalars(select(User).order_by(User.created_at.desc()).limit(limit)).all()
+    return [
+        {
+            "id": str(u.id),
+            "email": u.email,
+            "username": u.username,
+            "role": u.role.value,
+            "is_admin": u.is_admin,
+            "expire_at": u.expire_at.isoformat() if u.expire_at else None,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        }
+        for u in rows
+    ]
+
+
+def admin_update_user_role(
+    db: Session,
+    target_id: uuid.UUID,
+    role: str | None = None,
+    admin_id: uuid.UUID | None = None,
+    is_admin: bool | None = None,
+) -> User | None:
+    """调整用户角色/管理员标记；返回更新后的用户，不存在返回 None。
+
+    安全：禁止管理员修改自己（防自降级后绕过鉴权）；审计日志由 API 层写。
+    """
+    if admin_id is not None and target_id == admin_id:
+        raise ValueError("不能修改自己的角色")
+    user = db.get(User, target_id)
+    if user is None:
+        return None
+    if role is not None:
+        user.role = UserRole(role) if isinstance(role, str) else role
+    if is_admin is not None:
+        user.is_admin = is_admin
+    db.commit()
+    return user
 
 
 def log_admin_action(db: Session, admin_user_id: uuid.UUID, action: str, target_id: str | None = None) -> None:

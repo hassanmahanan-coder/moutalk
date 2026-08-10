@@ -292,3 +292,31 @@ def test_get_order_hides_other_users_order(client, auth, session):
 def test_get_order_unknown_returns_404(client, auth):
     r = client.get("/api/payment/orders/00000000-0000-0000-0000-000000000000", headers=auth)
     assert r.status_code == 404
+
+
+def test_notify_pushes_to_online_user(client, session, user, monkeypatch):
+    """PRD 9.15：支付成功后向在线用户 WS 推送通知。"""
+    from app.services.ws_manager import get_ws_manager
+
+    pushed = []
+
+    async def _fake_send_to_user(user_id, message):
+        pushed.append((user_id, message))
+
+    monkeypatch.setattr(get_ws_manager(), "send_to_user", _fake_send_to_user)
+    order = create_order(session, user.id, OrderType.SUBSCRIBE, None, 199.0)
+    session.commit()
+    r = client.post(
+        "/api/payment/notify",
+        data={
+            "out_trade_no": order.out_trade_no,
+            "trade_no": "alipay-api-push-1",
+            "amount": "199.00",
+        },
+    )
+    assert r.text == "success"
+    assert pushed, "支付成功应触发在线用户推送"
+    uid, msg = pushed[0]
+    assert str(uid) == str(user.id)
+    assert msg["type"] == "notification"
+    assert msg["notification"]["type"] == "payment"

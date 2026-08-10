@@ -65,3 +65,27 @@ async def test_re_register_same_session(manager):
     await manager.broadcast({"type": "x"})
     assert old.sent == [], "旧连接不再接收"
     assert new.sent == [{"type": "x"}]
+
+
+async def test_send_to_user_delivers_only_to_that_user(manager):
+    """PRD 9.15 双写：在线用户按 user_id 推送通知。"""
+    user_ws = FakeWS()
+    other_ws = FakeWS()
+    manager.register("s-u1", user_ws, user_id="u-1")
+    manager.register("s-u1-b", FakeWS(), user_id="u-1")  # 同用户第二连接（重连）
+    manager.register("s-u2", other_ws, user_id="u-2")
+    await manager.send_to_user("u-1", {"type": "notification", "text": "支付成功"})
+    assert user_ws.sent == [{"type": "notification", "text": "支付成功"}]
+    assert other_ws.sent == [], "其他用户不接收"
+
+
+async def test_send_to_user_unregistered_user_noop(manager):
+    await manager.send_to_user("ghost", {"type": "notification"})  # 不抛异常
+
+
+async def test_unregister_removes_user_mapping(manager):
+    ws = FakeWS()
+    manager.register("s1", ws, user_id="u-1")
+    manager.unregister("s1")
+    await manager.send_to_user("u-1", {"type": "x"})
+    assert ws.sent == []

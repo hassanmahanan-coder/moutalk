@@ -320,6 +320,7 @@ async def _submit_report_generation(db: Session, session_id: uuid.UUID, ws: WebS
     try:
         from app.models import NegotiationSession as _NS
         from app.services.notification_service import create_notification
+        from app.services.ws_manager import get_ws_manager
 
         ns_row = db.get(_NS, session_id)
         if ns_row is not None:
@@ -331,5 +332,17 @@ async def _submit_report_generation(db: Session, session_id: uuid.UUID, ws: WebS
                 {"report_id": str(report.id), "session_id": str(session_id)},
             )
             db.commit()
+            # 用户级推送：其他页面/重连后的全局通知通道也能收到
+            await get_ws_manager().send_to_user(
+                str(ns_row.user_id),
+                {
+                    "type": "notification",
+                    "notification": {
+                        "type": "report",
+                        "title": "复盘报告已生成",
+                        "report_id": str(report.id),
+                    },
+                },
+            )
     except Exception as exc:  # noqa: BLE001 通知失败不阻断
         logger.warning("报告通知落库失败: %s", exc)

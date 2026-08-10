@@ -153,3 +153,21 @@ class TestNotificationAPI:
         session.commit()
         # 归属校验：他人不可标记已读（service 层已覆盖）
         assert notification_service.mark_read(session, n.id, other.id) is False
+
+
+class TestNotificationWS:
+    def test_ws_requires_token(self, client):
+        with client.websocket_connect("/api/notifications/ws") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "error"
+
+    def test_ws_rejects_invalid_token(self, client):
+        with client.websocket_connect("/api/notifications/ws?token=garbage") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "error"
+
+    def test_ws_keepalive_ignores_client_messages(self, client, auth):
+        token = auth["Authorization"].split(" ")[1]
+        with client.websocket_connect(f"/api/notifications/ws?token={token}") as ws:
+            ws.send_text("ping")  # 不应被关闭
+            ws.close()

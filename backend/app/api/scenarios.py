@@ -29,13 +29,20 @@ def _summary(s: Scenario) -> dict:
 
 @router.get("")
 def list_scenarios_api(db: Session = Depends(get_db)) -> dict:
-    rows = db.scalars(select(Scenario).order_by(Scenario.id)).all()
+    # 仅展示在售场景（管理后台下架后用户端不可见）
+    rows = db.scalars(
+        select(Scenario).where(Scenario.on_sale.is_(True)).order_by(Scenario.id)
+    ).all()
     return {"items": [_summary(s) for s in rows]}
 
 
 @router.get("/{scenario_id}")
 def get_scenario(scenario_id: str, db: Session = Depends(get_db)) -> dict:
-    row = db.scalar(select(Scenario).where(Scenario.id == scenario_id))
+    row = db.scalar(
+        select(Scenario).where(
+            Scenario.id == scenario_id, Scenario.on_sale.is_(True)
+        )
+    )
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

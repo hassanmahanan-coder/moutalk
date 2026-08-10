@@ -118,6 +118,20 @@ def test_login_by_unknown_username_raises(session):
         auth_service.login(session, "ghost_user", "password123")
 
 
+def test_login_returns_is_admin_flag(session):
+    """登录响应须含 is_admin（前端管理后台导航依赖）。"""
+    user = auth_service.register(session, "admin@x.com", "password123", username="admin_x")
+    session.commit()
+    user.is_admin = True
+    session.commit()
+    tokens = auth_service.login(session, "admin_x", "password123")
+    assert tokens["user"]["is_admin"] is True
+    auth_service.register(session, "plain@x.com", "password123", username="plain_u")
+    session.commit()
+    t2 = auth_service.login(session, "plain_u", "password123")
+    assert t2["user"]["is_admin"] is False
+
+
 def test_login_success_returns_tokens(session):
     auth_service.register(session, "bob@example.com", "password123")
     session.commit()

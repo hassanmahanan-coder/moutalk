@@ -196,6 +196,7 @@ class AuthService:
                 "email": user.email,
                 "username": user.username,
                 "role": user.role.value,
+                "is_admin": bool(user.is_admin),
             },
         }
 

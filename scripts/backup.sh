@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 数据备份脚本（PRD 9.20）：PostgreSQL pg_dump + Milvus collection 导出
-# 用法：./scripts/backup.sh [--retain 7]
+# 用法：
+#   ./scripts/backup.sh [--retain 7]            # 备份（默认保留 7 份）
+#   ./scripts/backup.sh --restore <file.sql>    # 恢复演练（psql 恢复到 PG 容器）
 # 生产建议由 Celery beat / crontab 每日 02:00 调用
 
 set -euo pipefail
@@ -8,12 +10,23 @@ set -euo pipefail
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETAIN="${RETAIN:-7}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-
-echo "==> PostgreSQL dump"
 PG_CONTAINER="${PG_CONTAINER:-moutalk-postgres-prod}"
 PG_USER="${POSTGRES_USER:-moutalk}"
 PG_DB="${POSTGRES_DB:-moutalk}"
+
+if [[ "${1:-}" == "--restore" ]]; then
+  FILE="${2:?用法: ./scripts/backup.sh --restore <file.sql>}"
+  [[ -f "$FILE" ]] || { echo "备份文件不存在: $FILE"; exit 1; }
+  echo "==> 恢复演练：$FILE -> $PG_CONTAINER($PG_DB)"
+  echo "    警告：将覆盖目标库现有数据（建议先备份）"
+  docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" < "$FILE"
+  echo "恢复完成"
+  exit 0
+fi
+
+mkdir -p "$BACKUP_DIR"
+
+echo "==> PostgreSQL dump"
 docker exec "$PG_CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" \
   > "$BACKUP_DIR/moutalk_pg_$STAMP.sql"
 echo "    saved: $BACKUP_DIR/moutalk_pg_$STAMP.sql"
