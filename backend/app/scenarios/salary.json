@@ -1,0 +1,67 @@
+{
+  "id": "salary",
+  "title": "薪资谈判",
+  "domain": "salary",
+  "difficulty": "easy",
+  "opponent_style": "职业化、有礼有节",
+  "time_sensitive": false,
+  "multi_dimension": true,
+  "dimension_total": 4,
+  "has_insider_info": true,
+  "briefing": "您已通过某互联网公司产品经理岗位终面，现在与 HR 进行薪资谈判。您当前薪资月薪 2.2 万，期望月薪 3 万以上。公司薪酬带宽最高可到 3.5 万（您并不确定）。涉及底薪、年终奖月数、期权、入职时间四个维度。",
+  "rules": "您扮演求职者。目标：在底薪、奖金、期权、入职时间上争取最优组合。",
+  "opponent_role": "你是某互联网公司的高级 HR，专业礼貌，熟悉薪酬带宽，善于用期权和成长空间替代现金涨幅。",
+  "opening_line": "恭喜您通过终面！关于薪酬方案，我们按公司的标准为优秀候选人准备了月薪 2.8 万、年终奖 2 个月、少量期权的方案，入职时间希望您两周内到岗。您看如何？",
+  "safe_fallback": [
+    "这个数字超出了我们当前的预算范围，但如果您在期权和入职时间上灵活一些，我还可以再争取。",
+    "抱歉，这个方案我暂时无法承诺，我们可以探讨其他组合方式。"
+  ],
+  "dimensions": [
+    {
+      "key": "base_salary",
+      "label": "底薪",
+      "unit": "wan",
+      "direction": "max",
+      "first_offer": 2.8,
+      "bottom_line": 3.5,
+      "keywords": ["底薪", "月薪", "薪资", "万"],
+      "prompt_hint": "底薪按月薪计，格式：「底薪：X.X 万」"
+    },
+    {
+      "key": "bonus",
+      "label": "年终奖",
+      "unit": "month",
+      "direction": "max",
+      "first_offer": 2,
+      "bottom_line": 4,
+      "keywords": ["年终奖", "奖金", "个月"],
+      "prompt_hint": "年终奖按月数计，格式：「年终奖：X 个月」"
+    },
+    {
+      "key": "equity",
+      "label": "期权",
+      "unit": "wan",
+      "direction": "max",
+      "first_offer": 0,
+      "bottom_line": 30,
+      "keywords": ["期权", "股权"],
+      "prompt_hint": "期权按价值计，格式：「期权：XX 万」"
+    },
+    {
+      "key": "start_date",
+      "label": "入职时间",
+      "unit": "day",
+      "direction": "max",
+      "first_offer": 14,
+      "bottom_line": 45,
+      "keywords": ["入职", "到岗", "天"],
+      "prompt_hint": "入职时间按天计，格式：「入职时间：XX 天内」"
+    }
+  ],
+  "weights": {
+    "base_salary": 0.4,
+    "bonus": 0.2,
+    "equity": 0.25,
+    "start_date": 0.15
+  }
+}

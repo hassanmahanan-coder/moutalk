@@ -1,0 +1,56 @@
+{
+  "id": "supplier",
+  "title": "供应商年度压价谈判",
+  "domain": "supplier",
+  "difficulty": "hard",
+  "opponent_style": "老练、寸步不让",
+  "time_sensitive": true,
+  "multi_dimension": true,
+  "dimension_total": 3,
+  "has_insider_info": false,
+  "briefing": "贵司与某零部件供应商合作两年，对方年度合同月底到期。今年原材料成本已下降约 10%，贵司要求单价从 120 元/件下调，同时希望更短的交期和更高的良率。对方是谈判老手，擅长使用各种战术。",
+  "rules": "您扮演采购方。目标：把单价压下来，同时争取交期与良率的改善。注意对方可能使用虚假底线、时间压迫等战术。",
+  "opponent_role": "你是该零部件供应商的销售负责人，从业 15 年，老练务实，寸步不让，善于用交期和质量绑定价格。",
+  "opening_line": "王经理，老朋友了，我们直说：今年原材料确实降了一些，但人工和运费涨了，单价 118 元已经是我们的诚意价，交期还是 30 天。您看我们能不能先把量定下来。",
+  "safe_fallback": [
+    "这个价格我们实在做不了，成本在那里摆着。如果可以接受现有交期，我可以在质量上做点承诺。",
+    "抱歉，这个单价超出我们承受范围了，希望我们继续在别的条款上寻找平衡。"
+  ],
+  "dimensions": [
+    {
+      "key": "unit_price",
+      "label": "单价",
+      "unit": "yuan",
+      "direction": "min",
+      "first_offer": 120,
+      "bottom_line": 95,
+      "keywords": ["单价", "价格", "元"],
+      "prompt_hint": "单价按元计，格式：「单价：XX 元」"
+    },
+    {
+      "key": "delivery_cycle",
+      "label": "交期",
+      "unit": "day",
+      "direction": "max",
+      "first_offer": 30,
+      "bottom_line": 40,
+      "keywords": ["交期", "交货", "天"],
+      "prompt_hint": "交期按天计，格式：「交期：XX 天」"
+    },
+    {
+      "key": "quality",
+      "label": "良率",
+      "unit": "percent",
+      "direction": "min",
+      "first_offer": 98,
+      "bottom_line": 99.5,
+      "keywords": ["良率", "合格率", "%"],
+      "prompt_hint": "良率按百分比计，格式：「良率：XX%」"
+    }
+  ],
+  "weights": {
+    "unit_price": 0.6,
+    "delivery_cycle": 0.2,
+    "quality": 0.2
+  }
+}

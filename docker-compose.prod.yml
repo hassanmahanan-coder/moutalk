@@ -1,0 +1,153 @@
+# 生产编排（PRD 9.19 / 功能 15）：HTTPS 反代 + 后端 + 数据层
+# 用法：docker compose -f docker-compose.prod.yml up -d
+# 前置：部署前构建前端 dist 到 ./frontend/dist，配置 .env.prod
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: moutalk-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/usr/share/caddy/html:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - fastapi
+    restart: unless-stopped
+
+  fastapi:
+    build: ./backend
+    container_name: moutalk-fastapi
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      APP_ENV: prod
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      MILVUS_URI: http://milvus-standalone:19530
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    env_file:
+      - .env.prod
+    volumes:
+      - ./backend:/app
+      - report_media:/app/media
+    depends_on:
+      - postgres
+      - redis
+      - milvus-standalone
+    restart: unless-stopped
+
+  celery_worker:
+    build: ./backend
+    container_name: moutalk-celery-worker-prod
+    environment:
+      APP_ENV: prod
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      MILVUS_URI: http://milvus-standalone:19530
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PDF_OUTPUT_DIR: /app/media/reports
+    env_file:
+      - .env.prod
+    volumes:
+      - ./backend:/app
+      - report_media:/app/media
+    depends_on:
+      - postgres
+      - redis
+    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--pool=solo"]
+    restart: unless-stopped
+
+  celery_beat:
+    build: ./backend
+    container_name: moutalk-celery-beat-prod
+    environment:
+      APP_ENV: prod
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    env_file:
+      - .env.prod
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - celery_worker
+    command: ["celery", "-A", "app.celery_app", "beat", "--loglevel=info"]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: moutalk-postgres-prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moutalk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moutalk_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-moutalk}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: moutalk-redis-prod
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.25
+    container_name: moutalk-milvus-etcd-prod
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcddata:/etcd
+    restart: unless-stopped
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+    container_name: moutalk-milvus-minio-prod
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minios --console-address ":9001"
+    volumes:
+      - miniodata:/minios
+    restart: unless-stopped
+
+  milvus-standalone:
+    image: milvusdb/milvus:v3.0.0
+    container_name: moutalk-milvus-prod
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - milvusdata:/var/lib/milvus
+    ports:
+      - "19530:19530"
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  etcddata:
+  miniodata:
+  milvusdata:
+  report_media:
+  caddy_data:
+  caddy_config:

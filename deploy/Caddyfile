@@ -1,0 +1,16 @@
+# Caddy 反向代理配置（PRD 9.19 / 功能 15）
+# 用法：docker compose -f docker-compose.prod.yml up -d
+# 域名替换为实际域名后 Caddy 自动签发 Let's Encrypt 证书
+
+moutalk.example.com {
+    # WebSocket 反代（Caddy 自动处理 Upgrade 头）
+    reverse_proxy /api/negotiation/* fastapi:8000
+
+    # REST API
+    reverse_proxy /api/* fastapi:8000
+
+    # 静态前端（SPA history 模式）
+    root * /usr/share/caddy/html
+    file_server
+    try_files {path} /index.html
+}

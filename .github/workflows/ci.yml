@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend lint + tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: moutalk
+          POSTGRES_PASSWORD: moutalk_dev_pw
+          POSTGRES_DB: moutalk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moutalk"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        working-directory: backend
+        run: python -m ruff check app tests
+
+      - name: Tests (pytest)
+        working-directory: backend
+        run: python -m pytest tests -q -p no:cacheprovider
+
+      - name: Migrations up-to-date (alembic check)
+        working-directory: backend
+        run: |
+          python -c "
+          from sqlalchemy import create_engine, text
+          from app.core.config import get_settings
+          s = get_settings()
+          admin = create_engine(
+              f'postgresql+psycopg://{s.postgres_user}:{s.postgres_password}'
+              f'@{s.postgres_host}:{s.postgres_port}/postgres',
+              isolation_level='AUTOCOMMIT')
+          with admin.connect() as c:
+              c.execute(text('DROP DATABASE IF EXISTS moutalk_migtest WITH (FORCE)'))
+              c.execute(text('CREATE DATABASE moutalk_migtest'))
+          admin.dispose()
+          "
+          python -m alembic upgrade head
+          python -m alembic check
+        env:
+          MOUTALK_TEST_DB_URL: postgresql+psycopg://moutalk:moutalk_dev_pw@localhost:5432/moutalk_migtest
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build

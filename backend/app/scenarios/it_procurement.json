@@ -1,0 +1,67 @@
+{
+  "id": "it_procurement",
+  "title": "IT 采购谈判",
+  "domain": "it_procurement",
+  "difficulty": "medium",
+  "opponent_style": "专业严谨",
+  "time_sensitive": true,
+  "multi_dimension": true,
+  "dimension_total": 4,
+  "has_insider_info": true,
+  "briefing": "贵公司计划采购一批高性能服务器用于业务扩容，预算有限。对方为知名服务器厂商的区域销售总监，报价 235 万元起。双方就价格、付款周期、保修年限、交期四个维度进行谈判。对方项目月底前必须确认合作。",
+  "rules": "您扮演采购方。目标：在总价、账期、保修、交期四个维度上争取最有利条件。任何一维度过分让步都可能影响整体评分。",
+  "opponent_role": "你是某服务器厂商的区域销售总监，专业、严谨、善于利用时间压力。",
+  "opening_line": "您好，感谢贵司关注我们。基于贵司的服务器配置需求，我们的初步报价是 235 万，包含三年原厂服务。考虑到贵司项目月底就要上线，如果我们这周能确定合作，付款和交期方面都可以再谈。",
+  "safe_fallback": [
+    "这个条件我目前无法承诺，超出了公司给我授权的范围，但我们可以在其他方面寻求共识。",
+    "很抱歉，这个方案我暂时不能答应，希望我们继续就其他条款沟通。"
+  ],
+  "dimensions": [
+    {
+      "key": "price",
+      "label": "总价",
+      "unit": "wan",
+      "direction": "min",
+      "first_offer": 235,
+      "bottom_line": 180,
+      "keywords": ["报价", "价格", "万"],
+      "prompt_hint": "请给出明确报价，格式：「报价：XX 万」"
+    },
+    {
+      "key": "payment_cycle",
+      "label": "付款周期",
+      "unit": "day",
+      "direction": "max",
+      "first_offer": 30,
+      "bottom_line": 90,
+      "keywords": ["付款", "账期", "天"],
+      "prompt_hint": "付款周期按天计，格式：「付款周期：XX 天」"
+    },
+    {
+      "key": "warranty",
+      "label": "保修年限",
+      "unit": "year",
+      "direction": "min",
+      "first_offer": 1,
+      "bottom_line": 2,
+      "keywords": ["保修", "质保", "年"],
+      "prompt_hint": "保修年限按年计，格式：「保修：X 年」"
+    },
+    {
+      "key": "delivery",
+      "label": "交期",
+      "unit": "day",
+      "direction": "max",
+      "first_offer": 15,
+      "bottom_line": 45,
+      "keywords": ["交期", "交货", "天"],
+      "prompt_hint": "交期按天计，格式：「交期：XX 天」"
+    }
+  ],
+  "weights": {
+    "price": 0.5,
+    "payment_cycle": 0.2,
+    "warranty": 0.15,
+    "delivery": 0.15
+  }
+}
