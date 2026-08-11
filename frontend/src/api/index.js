@@ -16,6 +16,8 @@ export const authApi = {
 export const scenarioApi = {
   list: () => http.get('/scenarios'),
   detail: (id) => http.get(`/scenarios/${id}`),
+  createCustom: (config) => http.post('/scenarios/custom', { config }),
+  deleteCustom: (id) => http.delete(`/scenarios/custom/${id}`),
 }
 
 export const sessionApi = {

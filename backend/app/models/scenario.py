@@ -38,6 +38,9 @@ class Scenario(Base):
     on_sale: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )  # 管理后台上下架（PRD 9.16 扩展）：下架后用户端不可见/不可购
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )  # 自定义场景归属（null=官方内置）
 
 
 class UserScenarioAccess(Base):

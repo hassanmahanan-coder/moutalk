@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models import Scenario, User, UserRole
-from app.scenarios import load_scenario
 from app.services.quota import UsageCounter
 from app.services.replay_service import ReplayError, build_replay
 from app.services.session_store import create_session, list_sessions
@@ -34,6 +33,12 @@ def create(req: CreateSessionRequest, db: Session = Depends(get_db), user: User 
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "SCENARIO_NOT_FOUND", "message": "场景包不存在"},
         )
+    if scenario_row.owner_id is not None and scenario_row.owner_id != user.id:
+        # 自定义场景归属校验：他人私有场景不可开
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "无权使用该自定义场景"},
+        )
     if user.role == UserRole.FREE and not usage_counter.check_and_increment(
         str(user.id), req.scenario_id
     ):
@@ -46,7 +51,9 @@ def create(req: CreateSessionRequest, db: Session = Depends(get_db), user: User 
             )
     ns = create_session(db, user.id, req.scenario_id)
     db.commit()
-    scenario = load_scenario(req.scenario_id)
+    from app.services.scenario_loader import load_scenario_for_session
+
+    scenario = load_scenario_for_session(db, req.scenario_id)
     return {
         "id": str(ns.id),
         "scenario_id": req.scenario_id,

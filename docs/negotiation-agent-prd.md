@@ -1858,3 +1858,18 @@ POSTGRES_HOST=localhost / PORT=5433       # Docker 映射
 - ~~Windows PostgresSaver ProactorEventLoop 降级~~ **已解决**：run.py 手动创建 Selector 事件循环驱动 uvicorn Server（uvicorn 0.36+ 硬编码 Proactor，policy 设置无效）；`python run.py` 启动即生效
 - ~~worker 无 WS 通道~~ **已解决**：Redis pub/sub 事件总线（event_bus.py）——worker 报告完成/对账补登发布事件，API 进程监听后 send_to_user 实时推送（已验证端到端）
 - 通知推送/WS 仅在 API 进程内（worker 进程无法直推）——已由事件总线桥接解决
+
+### C.9 自定义场景工具（2026-08-11 落地，原"未来考虑"项）
+| 能力 | 说明 |
+|---|---|
+| 创建 | POST /api/scenarios/custom（结构校验：必填字段/维度/weights 覆盖且和=1；非法 422 SCENARIO_INVALID）|
+| 私有可见 | 拥有者列表可见可用；他人不可见/不可开会话（403）；官方场景公开不受影响 |
+| 删除 | 归属校验 + 级联删除其会话（sessions FK RESTRICT）|
+| 前端 | 大厅入口 + ScenarioCreateView（表单模式权重自动均分 / JSON 导入 + 示例）|
+| 引擎兼容 | load_scenario_for_session：DB 优先（自定义），官方回退 JSON 文件 |
+| 测试 | 校验器 11 例 + API 10 例（可见性/越权/级联删除/会话）+ 端到端 |
+
+### C.7 测试基线（2026-08-11 更新）
+- 后端：**472 passed** + ruff clean
+- 前端：vitest 21 passed + Playwright E2E 4 passed（本地，需 8765+5173 运行中）+ build 通过
+- 迁移：53f0702dbf0f → 58f71c3926e5 → 8884346523fb → b9239a8602ae → 360f036d2731 → 6c8e2dfd61ee → 6a5e73674b6a

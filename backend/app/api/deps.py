@@ -41,6 +41,20 @@ def get_current_user(
     return user
 
 
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """可选登录用户（无/无效 token 返回 None，供公开端点叠加个人数据）。"""
+    if credentials is None:
+        return None
+    try:
+        payload = decode_token(credentials.credentials, TokenType.ACCESS)
+    except JWTError:
+        return None
+    return db.get(User, uuid.UUID(payload["sub"]))
+
+
 def get_admin_user(
     user: User = Depends(get_current_user),
 ) -> User:

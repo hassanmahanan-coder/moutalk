@@ -50,6 +50,16 @@ async function start(scenario) {
     starting.value = ''
   }
 }
+
+async function removeCustom(scenario) {
+  try {
+    await scenarioApi.deleteCustom(scenario.id)
+    scenarios.value = scenarios.value.filter((s) => s.id !== scenario.id)
+    ElMessage.success('自定义场景已删除')
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
 </script>
 
 <template>
@@ -63,11 +73,18 @@ async function start(scenario) {
 
     <hr class="gold-rule" />
 
+    <div class="lobby-toolbar">
+      <el-button type="primary" plain @click="router.push({ name: 'scenario-create' })">
+        ＋ 自定义场景
+      </el-button>
+    </div>
+
     <div class="grid">
       <article v-for="(s, i) in scenarios" :key="s.id" class="card" :style="{ '--i': i }">
         <header class="card-head">
           <span class="case-no">案卷 {{ String(i + 1).padStart(2, '0') }}</span>
           <span class="domain">{{ DOMAIN_LABEL[s.domain] || s.domain }}</span>
+          <span v-if="s.is_custom" class="tag custom">自定义</span>
         </header>
         <h2 class="card-title">{{ s.title }}</h2>
         <div class="tags">
@@ -79,13 +96,18 @@ async function start(scenario) {
           <span class="price" :class="{ free: s.is_free }">
             {{ s.is_free || s.price === null || s.price === 0 ? '内置免费' : `¥ ${Number(s.price).toFixed(2)}` }}
           </span>
-          <el-button
-            type="primary"
-            :loading="starting === s.id"
-            @click="start(s)"
-          >
-            展开谈判
-          </el-button>
+          <div class="card-actions">
+            <el-button v-if="s.is_custom" plain size="small" @click.stop="removeCustom(s)">
+              删除
+            </el-button>
+            <el-button
+              type="primary"
+              :loading="starting === s.id"
+              @click="start(s)"
+            >
+              展开谈判
+            </el-button>
+          </div>
         </footer>
       </article>
     </div>

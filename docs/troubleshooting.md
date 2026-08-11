@@ -549,3 +549,15 @@ egotiation.py / eports.py：dev 环境（app_env=dev）直接同步生成报告
 - **解决 2**：`app/services/event_bus.py`——Redis pub/sub 事件总线：worker/API 统一 `publish_notification`（同步发布，失败静默），API 进程 lifespan 启动 `start_event_listener` 长循环订阅 → `ws_manager.send_to_user`。接入：celery_tasks.run_full_report（报告完成）、payment_service.process_paid_callback（支付成功，替换 api/payment.py 直接推送）；main.py startup/shutdown 管理监听任务。
 - **验证**：真实 Redis 闭环测试（发布-订阅）+ WS 端到端——通知通道连接 → 一键直付 → 实时收到 `payment|支付成功` 推送；全量 451 passed；ruff clean。
 - **注意**：① 启动后端统一用 `python run.py`（.venv）；② 事件监听任务随 FastAPI lifespan 启停（app.state 持有，shutdown cancel）；③ 旧 `uvicorn app.main:app` 启动方式仍会 Proactor 降级，文档/脚本已同步 run.py。
+
+## 53. 自定义场景工具（PRD 未来项提前落地）
+
+- **状态**：已实现（后端 472 passed + 前端 21 + ruff clean）
+- **实现**：
+  1. **模型**：Scenario.owner_id（UUID，nullable，FK users CASCADE；null=官方内置）——迁移 6a5e73674b6a，dev 库已 ALTER。
+  2. **校验器**（services/scenario_validator.py）：必填字段/safe_fallback≥1/dimensions≥1（key 唯一、direction min|max、数值为正、keywords≥1）/weights 覆盖全部维度且和≈1；11 个单测。
+  3. **API**：`POST /api/scenarios/custom`（校验失败 422 SCENARIO_INVALID；id 从标题 slug 生成，冲突加序号）、`DELETE /api/scenarios/custom/{id}`（归属校验 403；**级联删除会话**——sessions.scenario_id FK 为 RESTRICT）；`GET /api/scenarios` 与 detail 改为"官方在售 + 自己的自定义"（deps 新增 get_optional_user，匿名仅官方）。
+  4. **会话归属**：sessions create 校验自定义场景 owner 必须为当前用户（403）；引擎加载改 `load_scenario_for_session`（DB 优先，官方回退 JSON 文件）——negotiation.py/sessions.py/scenarios detail 统一。
+  5. **前端**：LobbyView「＋自定义场景」入口 + 卡片"自定义"标签与删除按钮；新增 ScenarioCreateView（表单模式：标题/背景/规则/对手/开场白/安全话术/维度编辑器，权重自动均分修正浮点；JSON 导入模式 + 示例填充）。
+- **验证**：端到端——创建 201 → 拥有者列表可见 → 他人不可见 → 拥有者开会话 201（opening 正常）→ 他人开会话 403 → 删除 200（含会话场景级联）→ 详情 404；后端 472 passed；前端 build + 21 测试通过。
+- **注意**：① 中文标题 slug 回退 "custom" 前缀（无拼音库）；② 自定义场景免费无额度限制区分（与官方免费一致）；③ 删除自定义场景会级联删除其全部会话（私有数据，合理）。

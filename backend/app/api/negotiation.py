@@ -33,10 +33,10 @@ from app.engine.checkpointer import open_checkpointer
 from app.engine.engine import NegotiationEngine
 from app.engine.llm import MockLLM, set_rate_limit_user
 from app.models import NegotiationSession, Scenario, SessionStatus
-from app.scenarios import load_scenario
 from app.services.negotiation_lock import NegotiationLock
 from app.services.rag import build_rag_memory
 from app.services.report_service import generate_report
+from app.services.scenario_loader import load_scenario_for_session
 from app.services.security import TokenType, decode_token
 from app.services.session_store import end_session, get_session_state, save_round
 from app.services.ws_buffer import WsBuffer
@@ -183,7 +183,7 @@ async def _negotiate_loop(
         return
 
     engine = NegotiationEngine(
-        load_scenario(ns.scenario_id),
+        load_scenario_for_session(db, ns.scenario_id),
         checkpointer=checkpointer,
         rag=rag,
         # PRD 9.4 真流式：utterance 节点边生成边转发（重试轮自动退回伪流式）

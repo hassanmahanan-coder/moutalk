@@ -6,6 +6,7 @@ const routes = [
   { path: '/register', name: 'register', component: () => import('../views/RegisterView.vue'), meta: { guest: true, title: '注册' } },
   { path: '/terms/:kind?', name: 'terms', component: () => import('../views/TermsView.vue'), meta: { guest: true, title: '用户协议' } },
   { path: '/', name: 'lobby', component: () => import('../views/LobbyView.vue'), meta: { title: '场景大厅' } },
+  { path: '/scenario/create', name: 'scenario-create', component: () => import('../views/ScenarioCreateView.vue'), meta: { title: '自定义场景' } },
   { path: '/room/:id', name: 'room', component: () => import('../views/RoomView.vue'), meta: { title: '谈判室' } },
   { path: '/reports', name: 'reports', component: () => import('../views/ReportsView.vue'), meta: { title: '复盘报告' } },
   { path: '/reports/compare/:ids', name: 'report-compare', component: () => import('../views/ReportCompareView.vue'), meta: { title: '报告对比' } },
