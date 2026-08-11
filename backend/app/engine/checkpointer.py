@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -20,6 +21,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+CHECKPOINTER_TIMEOUT = 8  # 秒：连接/建表超时即降级（Windows psycopg async 兼容兜底）
 
 
 def get_checkpointer_uri() -> str:
@@ -33,12 +36,17 @@ def get_checkpointer_uri() -> str:
 
 @asynccontextmanager
 async def open_checkpointer() -> AsyncIterator[AsyncPostgresSaver]:
-    """打开 PostgresSaver（首次自动建表 setup），退出自动关闭连接。"""
+    """打开 PostgresSaver（首次自动建表 setup），退出自动关闭连接。
+
+    Windows 兼容：psycopg async 在 Windows 可能挂起（Selector loop）或
+    不支持（Proactor），用超时兜底——快速失败降级，避免谈判卡死。
+    """
     uri = get_checkpointer_uri()
     try:
-        async with AsyncPostgresSaver.from_conn_string(uri) as checkpointer:
-            await checkpointer.setup()
-            yield checkpointer
+        async with asyncio.timeout(CHECKPOINTER_TIMEOUT):
+            async with AsyncPostgresSaver.from_conn_string(uri) as checkpointer:
+                await checkpointer.setup()
+                yield checkpointer
     except Exception as exc:
         logger.warning("PostgresSaver 不可用（%s），降级无 checkpointer 运行", exc)
         raise

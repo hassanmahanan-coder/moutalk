@@ -22,14 +22,13 @@ def test_win32_uses_selector_event_loop_policy():
         )
 
 
-def test_run_py_uses_selector_loop():
-    """run.py 必须：先设 Selector policy，再手动建 loop 驱动 Server（绕过 uvicorn 的 Proactor 硬编码）。"""
+def test_run_py_uses_standard_uvicorn():
+    """run.py 使用标准 uvicorn（Windows Proactor + checkpointer 超时降级是既定约束）。"""
     text = (ROOT / "run.py").read_text(encoding="utf-8")
-    policy_pos = text.index("set_event_loop_policy")
-    new_loop_pos = text.index("asyncio.new_event_loop")
-    assert policy_pos < new_loop_pos, "policy 必须早于 loop 创建"
-    assert "Server" in text and "server.serve" in text, "必须手动驱动 Server.serve（绕过 asyncio.run）"
-    assert "uvicorn.run(" not in text, "不得使用 uvicorn.run（Windows 硬编码 Proactor）"
+    assert "uvicorn.run" in text
+    cp = (ROOT / "app" / "engine" / "checkpointer.py").read_text(encoding="utf-8")
+    assert "asyncio.timeout" in cp, "checkpointer 必须有超时兜底（防 Selector 挂起）"
+    assert "CHECKPOINTER_TIMEOUT" in cp
 
 
 ROOT = Path(__file__).resolve().parents[1]
