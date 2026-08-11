@@ -120,8 +120,9 @@ def process_paid_callback(
     order.paid_at = datetime.now(UTC)
     _grant_entitlement(db, order)
     db.commit()
-    # PRD 9.15 双写：支付成功落库离线通知（订单已提交，通知失败不影响支付结果）
+    # PRD 9.15 双写：支付成功落库离线通知 + 发布事件（在线 WS 推送，离线拉取）
     try:
+        from app.services.event_bus import publish_notification
         from app.services.notification_service import create_notification
 
         create_notification(
@@ -132,6 +133,17 @@ def process_paid_callback(
             {"order_id": str(order.id), "out_trade_no": order.out_trade_no},
         )
         db.commit()
+        publish_notification(
+            str(order.user_id),
+            {
+                "type": "notification",
+                "notification": {
+                    "type": "payment",
+                    "title": "支付成功",
+                    "out_trade_no": order.out_trade_no,
+                },
+            },
+        )
     except Exception as exc:  # noqa: BLE001 通知落库失败不阻断支付
         logger.warning("支付成功通知落库失败: %s", exc)
         db.rollback()

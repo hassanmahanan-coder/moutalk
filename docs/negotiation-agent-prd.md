@@ -1853,8 +1853,8 @@ POSTGRES_HOST=localhost / PORT=5433       # Docker 映射
 - 前端：vitest 21 passed + Playwright E2E 4 passed（本地，需 8765+5173 运行中）+ build 通过
 - 迁移：53f0702dbf0f → 58f71c3926e5 → 8884346523fb → b9239a8602ae → 360f036d2731 → 6c8e2dfd61ee
 
-### C.8 已知限制
+### C.8 已知限制（2026-08-11 更新）
 - 支付宝沙箱网关 502（外部，watchdog 探测中）；一键直付可演示
-- Windows 开发机 PostgresSaver 因 ProactorEventLoop 降级 JSON 持久化（功能不受影响）
-- Celery worker 无 WS 通道，生产路径报告通知靠落库+拉取
-- 通知推送/WS 仅在 API 进程内（worker 进程无法直推）
+- ~~Windows PostgresSaver ProactorEventLoop 降级~~ **已解决**：run.py 手动创建 Selector 事件循环驱动 uvicorn Server（uvicorn 0.36+ 硬编码 Proactor，policy 设置无效）；`python run.py` 启动即生效
+- ~~worker 无 WS 通道~~ **已解决**：Redis pub/sub 事件总线（event_bus.py）——worker 报告完成/对账补登发布事件，API 进程监听后 send_to_user 实时推送（已验证端到端）
+- 通知推送/WS 仅在 API 进程内（worker 进程无法直推）——已由事件总线桥接解决

@@ -157,24 +157,5 @@ async def alipay_notify(
         ok = process_paid_callback(db, out_trade_no, trade_no, float(amount))
     except Exception:  # noqa: BLE001 回调异常统一返回 fail（支付宝会重试）
         return "fail"
-    if ok:
-        # PRD 9.15 双写：支付成功推送给在线用户（离线由通知落库兜底）
-        try:
-            order = db.scalar(select(Order).where(Order.out_trade_no == out_trade_no))
-            if order is not None:
-                from app.services.ws_manager import get_ws_manager
-
-                await get_ws_manager().send_to_user(
-                    str(order.user_id),
-                    {
-                        "type": "notification",
-                        "notification": {
-                            "type": "payment",
-                            "title": "支付成功",
-                            "out_trade_no": order.out_trade_no,
-                        },
-                    },
-                )
-        except Exception:  # noqa: BLE001 推送失败不阻断回调应答
-            logger.warning("支付成功 WS 推送失败: %s", out_trade_no)
+    # 在线推送由 process_paid_callback 发布事件 → API 进程监听转发（C.8 桥接）
     return "success" if ok else "fail"

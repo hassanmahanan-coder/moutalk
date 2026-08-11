@@ -79,6 +79,10 @@ def init_db() -> None:
     with SessionLocal() as db:
         seed_scenarios(db)
         db.commit()
+    # C.8：启动跨进程事件监听（worker → WS 推送桥接）
+    from app.services.event_bus import start_event_listener
+
+    app.state.event_listener_task = asyncio.create_task(start_event_listener())
 
 
 @app.on_event("shutdown")
@@ -87,6 +91,9 @@ async def shutdown_ws() -> None:
     from app.services.ws_manager import get_ws_manager
 
     manager = get_ws_manager()
+    task = getattr(app.state, "event_listener_task", None)
+    if task is not None:
+        task.cancel()
     if not manager.connections:
         return
     await manager.broadcast({"type": "server_shutdown"})

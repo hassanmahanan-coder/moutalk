@@ -49,9 +49,10 @@ async def run_full_report(
 
     with session_factory() as db:
         report = await generate_report(db, session_id, judge=_safe_judge)
-        # PRD 9.15 双写：报告完成后落库离线通知（worker 无 WS 通道，靠拉取）
+        # PRD 9.15 双写：报告完成后落库离线通知 + 发布事件（API 进程 WS 推送）
         try:
             from app.models import NegotiationSession
+            from app.services.event_bus import publish_notification
             from app.services.notification_service import create_notification
 
             ns = db.get(NegotiationSession, session_id)
@@ -67,9 +68,20 @@ async def run_full_report(
                     },
                 )
                 db.commit()
+                # 跨进程桥接：worker 无 WS 通道，经 Redis 事件由 API 进程推送
+                publish_notification(
+                    str(ns.user_id),
+                    {
+                        "type": "notification",
+                        "notification": {
+                            "type": "report",
+                            "title": "复盘报告已生成",
+                            "report_id": str(report.id),
+                        },
+                    },
+                )
         except Exception as exc:  # noqa: BLE001 通知失败不阻断报告
             logger.warning("报告完成通知落库失败: %s", exc)
-            db.rollback()
         db.refresh(report)  # 属性加载齐全后再返回（防 detached lazy load）
         return report
 

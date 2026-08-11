@@ -539,3 +539,13 @@ egotiation.py / eports.py：dev 环境（app_env=dev）直接同步生成报告
   6. **PRD 附录 C**：新增功能清单（认证/支付/通知/管理后台/引擎增强/前端工程/测试基线/已知限制）。
 - **验证**：端到端实测——封禁 423→解封 200；忘记密码发码→重置→新密码登录；改密码→新密码登录；全量 446 passed；vitest 21 + E2E 4；ruff clean；前端 build 通过。
 - **注意**：① E2E 需后端 8765 + 前端 5173 运行中（webServer 复用现有实例）；② Windows PostgresSaver ProactorEventLoop 降级 JSON 持久化（既有环境问题，已入 PRD C.8）；③ Playwright 浏览器已下载至 %LOCALAPPDATA%\ms-playwright（chromium 427MB）。
+
+## 52. C.8 已知约束完善：Selector 事件循环 + worker→WS 事件总线
+
+- **状态**：已解决（后端 451 passed + ruff clean）
+- **问题 1：PostgresSaver 降级**——`Psycopg cannot use the 'ProactorEventLoop'`。深挖根因：① uvicorn 先建 loop 再 import app，main.py 的 policy 设置无效；② **uvicorn 0.36+ `asyncio_loop_factory` 在 Windows 硬编码返回 ProactorEventLoop**（完全绕过 policy）。
+- **解决 1**：新建 `backend/run.py`——先设 SelectorPolicy，再 `asyncio.new_event_loop()` 手动建 loop 驱动 `uvicorn.Server.serve()`（绕开 uvicorn.run 的 asyncio.run）。验证：WS 谈判后日志**零降级记录**（此前每次必现）。启动方式改为 `python run.py`。
+- **问题 2：worker 无 WS 通道**——Celery 进程无法直推，生产路径报告/对账补登通知只能落库。
+- **解决 2**：`app/services/event_bus.py`——Redis pub/sub 事件总线：worker/API 统一 `publish_notification`（同步发布，失败静默），API 进程 lifespan 启动 `start_event_listener` 长循环订阅 → `ws_manager.send_to_user`。接入：celery_tasks.run_full_report（报告完成）、payment_service.process_paid_callback（支付成功，替换 api/payment.py 直接推送）；main.py startup/shutdown 管理监听任务。
+- **验证**：真实 Redis 闭环测试（发布-订阅）+ WS 端到端——通知通道连接 → 一键直付 → 实时收到 `payment|支付成功` 推送；全量 451 passed；ruff clean。
+- **注意**：① 启动后端统一用 `python run.py`（.venv）；② 事件监听任务随 FastAPI lifespan 启停（app.state 持有，shutdown cancel）；③ 旧 `uvicorn app.main:app` 启动方式仍会 Proactor 降级，文档/脚本已同步 run.py。
