@@ -1849,8 +1849,8 @@ POSTGRES_HOST=localhost / PORT=5433       # Docker 映射
 | 部署守卫 | Caddyfile/compose/backup/.env.prod.example 存在性守卫 | test_deploy_assets |
 
 ### C.7 测试基线（当前）
-- 后端：**436 passed** + ruff clean
-- 前端：vitest 21 passed + Playwright E2E 4 passed + build 通过
+- 后端：**446 passed** + ruff clean
+- 前端：vitest 21 passed + Playwright E2E 4 passed（本地，需 8765+5173 运行中）+ build 通过
 - 迁移：53f0702dbf0f → 58f71c3926e5 → 8884346523fb → b9239a8602ae → 360f036d2731 → 6c8e2dfd61ee
 
 ### C.8 已知限制
