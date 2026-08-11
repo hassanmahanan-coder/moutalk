@@ -23,7 +23,7 @@ test('用户注册到登录全流程', async ({ page, request }) => {
   await page.getByPlaceholder('至少 8 位').fill(password)
   await page.getByRole('button', { name: '入 局' }).click()
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByText('场景大厅')).toBeVisible()
+  await expect(page.getByText('场景大厅').first()).toBeVisible()
 })
 
 test('登录失败提示密码错误', async ({ page, request }) => {

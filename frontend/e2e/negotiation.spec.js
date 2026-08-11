@@ -15,7 +15,7 @@ test('发起谈判并发送首轮消息', async ({ page, request }) => {
   await page.getByPlaceholder(/you@example.com 或用户名/).fill(email)
   await page.getByPlaceholder('至少 8 位').fill(password)
   await page.getByRole('button', { name: '入 局' }).click()
-  await expect(page.getByText('场景大厅').first()).toBeVisible()
+  await expect(page.getByText('场景大厅').first().first()).toBeVisible()
 
   // 进入谈判室（展开谈判按钮）
   await page.getByRole('button', { name: '展开谈判' }).first().click()

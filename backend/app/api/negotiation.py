@@ -145,7 +145,12 @@ async def negotiate(ws: WebSocket, session_id: str, db: Session = Depends(get_db
                     rag.close()
     except WebSocketDisconnect:
         logger.info("WebSocket 断开: %s", session_id)
-    except Exception as exc:  # noqa: BLE001 Postgres 不可用时降级 JSON 持久化
+    except Exception as exc:  # noqa: BLE001 仅 PostgresSaver 类异常才降级 JSON 持久化
+        exc_text = str(exc).lower()
+        if "postgressaver" not in exc_text and "psycopg" not in exc_text:
+            # 非 checkpointer 异常（如 WS 已关闭后的发送竞态）：记录后正常结束，不重跑
+            logger.warning("谈判连接异常结束: %s", exc)
+            return
         logger.warning("PostgresSaver 不可用，降级 JSON 持久化: %s", exc)
         rag = _build_rag()
         buffer = WsBuffer()
@@ -315,12 +320,10 @@ async def _submit_report_generation(db: Session, session_id: uuid.UUID, ws: WebS
         except Exception as exc:  # noqa: BLE001 broker 不可用（本机 Redis 未启/测试环境）降级同步
             logger.warning("Celery 提交失败，降级同步生成: %s", exc)
     report = await generate_report(db, session_id)
-    await ws.send_json({"type": "report_ready", "rid": str(report.id)})
-    # PRD 9.15 双写：报告就绪落库通知（在线已 WS 推送，离线登录补拉）
+    # PRD 9.15 双写：先落库通知（再发 WS——客户端可能已断开，发送失败不阻断落库）
     try:
         from app.models import NegotiationSession as _NS
         from app.services.notification_service import create_notification
-        from app.services.ws_manager import get_ws_manager
 
         ns_row = db.get(_NS, session_id)
         if ns_row is not None:
@@ -332,17 +335,26 @@ async def _submit_report_generation(db: Session, session_id: uuid.UUID, ws: WebS
                 {"report_id": str(report.id), "session_id": str(session_id)},
             )
             db.commit()
-            # 用户级推送：其他页面/重连后的全局通知通道也能收到
-            await get_ws_manager().send_to_user(
-                str(ns_row.user_id),
-                {
-                    "type": "notification",
-                    "notification": {
-                        "type": "report",
-                        "title": "复盘报告已生成",
-                        "report_id": str(report.id),
-                    },
-                },
-            )
     except Exception as exc:  # noqa: BLE001 通知失败不阻断
         logger.warning("报告通知落库失败: %s", exc)
+    try:
+        await ws.send_json({"type": "report_ready", "rid": str(report.id)})
+    except Exception as exc:  # noqa: BLE001 WS 已断开时忽略
+        logger.debug("report_ready 发送失败（客户端已断开）: %s", exc)
+    # 用户级推送：其他页面/重连后的全局通知通道也能收到
+    try:
+        from app.services.ws_manager import get_ws_manager
+
+        await get_ws_manager().send_to_user(
+            str(ns_row.user_id),
+            {
+                "type": "notification",
+                "notification": {
+                    "type": "report",
+                    "title": "复盘报告已生成",
+                    "report_id": str(report.id),
+                },
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 推送失败不阻断
+        logger.warning("报告完成 WS 推送失败: %s", exc)
