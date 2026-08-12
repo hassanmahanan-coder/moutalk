@@ -19,7 +19,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import NegotiationSession, Report, Scenario, SessionStatus, UserRole
-from app.scenarios import load_scenario
 from app.services.judge import build_judge
 
 logger = logging.getLogger(__name__)
@@ -156,7 +155,10 @@ def _scenario_config(db: Session, scenario_id: str) -> dict:
     row = db.scalar(select(Scenario).where(Scenario.id == scenario_id))
     if row is None:
         raise ValueError(f"场景包不存在: {scenario_id}")
-    return load_scenario(scenario_id)
+    # 自定义场景无 JSON 文件：DB config_json 优先，官方回退文件（C.9 自定义场景支持）
+    from app.services.scenario_loader import load_scenario_for_session
+
+    return load_scenario_for_session(db, scenario_id)
 
 
 async def generate_report(

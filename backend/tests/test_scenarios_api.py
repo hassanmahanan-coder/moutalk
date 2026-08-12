@@ -223,6 +223,37 @@ def test_delete_custom_scenario_with_sessions(client, auth, session):
     assert client.get(f"/api/scenarios/{created['id']}", headers=auth).status_code == 404
 
 
+def test_custom_scenario_report_generation(client, auth, session):
+    """自定义场景谈判结束后报告必须能生成（报告服务场景加载兼容，C.9）。"""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.engine.engine import NegotiationEngine
+    from app.engine.llm import MockLLM
+    from app.models import NegotiationSession, User
+    from app.services.report_service import generate_report
+    from app.services.scenario_loader import load_scenario_for_session
+    from app.services.session_store import save_round
+
+    created = client.post("/api/scenarios/custom", json={"config": _custom_payload()}, headers=auth).json()
+    owner = session.scalar(select(User).where(User.email == "sowner@example.com"))
+    ns = NegotiationSession(user_id=owner.id, scenario_id=created["id"])
+    session.add(ns)
+    session.commit()
+
+    eng = NegotiationEngine(load_scenario_for_session(session, created["id"]), llm=MockLLM())
+    state = eng.initial_state(str(ns.id))
+    state = asyncio.run(eng.run_round(state, "租金太贵了，2.5 万可以吗？"))
+    save_round(session, ns.id, state)
+    session.commit()
+
+    report = asyncio.run(generate_report(session, ns.id))
+    assert report.total_score is not None
+    assert report.session_id == ns.id
+    assert report.objective_json["dimensions"]["price_attainment"] is not None
+
+
 def test_other_user_cannot_start_custom_session(client, auth):
     created = client.post("/api/scenarios/custom", json={"config": _custom_payload()}, headers=auth).json()
     client.post(
