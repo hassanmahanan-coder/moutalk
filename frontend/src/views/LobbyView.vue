@@ -60,6 +60,10 @@ async function removeCustom(scenario) {
     /* 拦截器已提示 */
   }
 }
+
+function editCustom(scenario) {
+  router.push({ name: 'scenario-create', query: { id: scenario.id } })
+}
 </script>
 
 <template>
@@ -97,6 +101,9 @@ async function removeCustom(scenario) {
             {{ s.is_free || s.price === null || s.price === 0 ? '内置免费' : `¥ ${Number(s.price).toFixed(2)}` }}
           </span>
           <div class="card-actions">
+            <el-button v-if="s.is_custom" plain size="small" @click.stop="editCustom(s)">
+              编辑
+            </el-button>
             <el-button v-if="s.is_custom" plain size="small" @click.stop="removeCustom(s)">
               删除
             </el-button>

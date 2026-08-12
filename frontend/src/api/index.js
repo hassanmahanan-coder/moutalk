@@ -17,6 +17,7 @@ export const scenarioApi = {
   list: () => http.get('/scenarios'),
   detail: (id) => http.get(`/scenarios/${id}`),
   createCustom: (config) => http.post('/scenarios/custom', { config }),
+  updateCustom: (id, config) => http.put(`/scenarios/custom/${id}`, { config }),
   deleteCustom: (id) => http.delete(`/scenarios/custom/${id}`),
 }
 

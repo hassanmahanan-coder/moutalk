@@ -1,12 +1,14 @@
 <script setup>
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { scenarioApi } from '../api'
 
 const router = useRouter()
+const route = useRoute()
 const mode = ref('form') // form | json
 const loading = ref(false)
+const editingId = ref(null)
 const jsonText = ref('')
 
 const form = reactive({
@@ -27,6 +29,32 @@ const DIM_HINT = [
   { key: 'warranty', label: '保修年限', first: 1, bottom: 2 },
   { key: 'delivery', label: '交期', first: 15, bottom: 45 },
 ]
+
+onMounted(async () => {
+  const id = route.query.id
+  if (!id) return
+  editingId.value = id
+  try {
+    const detail = await scenarioApi.detail(id)
+    form.title = detail.title
+    form.briefing = detail.briefing
+    form.rules = detail.rules || ''
+    form.opponent_role = detail.opponent_role || ''
+    form.opening_line = detail.opening_line
+    form.safe_fallback = (detail.safe_fallback || []).join('\n')
+    form.dimensions = (detail.dimensions || []).map((d) => ({
+      key: d.key,
+      label: d.label,
+      direction: d.direction,
+      first_offer: d.first_offer,
+      bottom_line: d.bottom_line,
+      keywords: (d.keywords || []).join(','),
+    }))
+    jsonText.value = JSON.stringify(detail, null, 2)
+  } catch {
+    /* 拦截器已提示 */
+  }
+})
 
 function addDimension() {
   form.dimensions.push({ key: '', label: '', direction: 'min', first_offer: null, bottom_line: null, keywords: '' })
@@ -79,8 +107,13 @@ async function submit() {
       }
       config = buildConfig()
     }
-    const created = await scenarioApi.createCustom(config)
-    ElMessage.success(`场景「${created.title}」创建成功`)
+    if (editingId.value) {
+      const updated = await scenarioApi.updateCustom(editingId.value, config)
+      ElMessage.success(`场景「${updated.title}」已更新`)
+    } else {
+      const created = await scenarioApi.createCustom(config)
+      ElMessage.success(`场景「${created.title}」创建成功`)
+    }
     router.push({ name: 'lobby' })
   } catch (e) {
     if (e.code === 'SCENARIO_INVALID') {
@@ -98,14 +131,14 @@ async function submit() {
   <div class="create">
     <div class="head">
       <p class="kicker">Custom</p>
-      <h1>自定义场景</h1>
-      <p class="sub">打造你自己的谈判案卷 · 仅自己可见</p>
+      <h1>{{ editingId ? '编辑场景' : '自定义场景' }}</h1>
+      <p class="sub">{{ editingId ? '修改你的谈判案卷' : '打造你自己的谈判案卷 · 仅自己可见' }}</p>
     </div>
     <hr class="gold-rule" />
 
     <div class="mode-row">
       <button class="mode" :class="{ on: mode === 'form' }" @click="mode = 'form'">表单模式</button>
-      <button class="mode" :class="{ on: mode === 'json' }" @click="mode = 'json'">JSON 导入</button>
+      <button class="mode" :class="{ on: mode === 'json' }" @click="mode = 'json'">JSON 模式</button>
     </div>
 
     <template v-if="mode === 'form'">
@@ -171,7 +204,9 @@ async function submit() {
     </template>
 
     <div class="submit-row">
-      <el-button type="primary" size="large" :loading="loading" @click="submit">创建场景</el-button>
+      <el-button type="primary" size="large" :loading="loading" @click="submit">
+        {{ editingId ? '保存修改' : '创建场景' }}
+      </el-button>
       <el-button plain size="large" @click="router.push({ name: 'lobby' })">返回大厅</el-button>
     </div>
   </div>

@@ -81,6 +81,7 @@ def get_scenario(
         "rules": cfg.get("rules", ""),
         "opponent_role": cfg.get("opponent_role", ""),
         "opening_line": cfg.get("opening_line", ""),
+        "safe_fallback": cfg.get("safe_fallback", []),
         "dimensions": cfg.get("dimensions", []),
         "weights": cfg.get("weights", {}),
     }
@@ -118,6 +119,37 @@ def create_custom_scenario(
     db.add(scenario)
     db.commit()
     return {"id": scenario.id, "title": scenario.title, "is_custom": True}
+
+
+@router.put("/custom/{scenario_id}")
+def update_custom_scenario(
+    scenario_id: str,
+    req: CustomScenarioRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """修改自定义场景（归属校验 + 全量重新校验）。"""
+    row = db.scalar(
+        select(Scenario).where(
+            Scenario.id == scenario_id, Scenario.owner_id == user.id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "无权修改该场景"},
+        )
+    try:
+        cfg = validate_custom_scenario(req.config)
+    except ScenarioValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "SCENARIO_INVALID", "message": str(exc)},
+        )
+    row.title = cfg["title"]
+    row.config_json = cfg
+    db.commit()
+    return {"id": row.id, "title": row.title, "is_custom": True}
 
 
 @router.delete("/custom/{scenario_id}")

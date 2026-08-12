@@ -223,6 +223,56 @@ def test_delete_custom_scenario_with_sessions(client, auth, session):
     assert client.get(f"/api/scenarios/{created['id']}", headers=auth).status_code == 404
 
 
+def test_update_custom_scenario(client, auth):
+    """创建后可修改（报价/背景等全量更新，重新校验）。"""
+    created = client.post("/api/scenarios/custom", json={"config": _custom_payload()}, headers=auth).json()
+    new_payload = _custom_payload()
+    new_payload["title"] = "办公室租赁谈判（新）"
+    new_payload["opening_line"] = "您好，月租金 3.5 万元。"
+    new_payload["dimensions"][0]["first_offer"] = 3.5
+    r = client.put(
+        f"/api/scenarios/custom/{created['id']}",
+        json={"config": new_payload},
+        headers=auth,
+    )
+    assert r.status_code == 200
+    assert r.json()["title"] == "办公室租赁谈判（新）"
+    detail = client.get(f"/api/scenarios/{created['id']}", headers=auth).json()
+    assert "3.5" in detail["opening_line"]
+    assert detail["dimensions"][0]["first_offer"] == 3.5
+
+
+def test_update_custom_scenario_invalid_422(client, auth):
+    created = client.post("/api/scenarios/custom", json={"config": _custom_payload()}, headers=auth).json()
+    bad = _custom_payload()
+    bad["weights"] = {"rent": 0.5}  # 不覆盖全部维度
+    r = client.put(
+        f"/api/scenarios/custom/{created['id']}",
+        json={"config": bad},
+        headers=auth,
+    )
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "SCENARIO_INVALID"
+
+
+def test_update_custom_scenario_other_user_403(client, auth):
+    created = client.post("/api/scenarios/custom", json={"config": _custom_payload()}, headers=auth).json()
+    client.post(
+        "/api/auth/register",
+        json={"username": "other_upd", "email": "other_upd@example.com", "password": "password123"},
+    )
+    tok = client.post(
+        "/api/auth/login",
+        json={"account": "other_upd@example.com", "password": "password123"},
+    ).json()["access_token"]
+    r = client.put(
+        f"/api/scenarios/custom/{created['id']}",
+        json={"config": _custom_payload()},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert r.status_code == 403
+
+
 def test_custom_scenario_report_generation(client, auth, session):
     """自定义场景谈判结束后报告必须能生成（报告服务场景加载兼容，C.9）。"""
     import asyncio
