@@ -65,14 +65,22 @@ function removeDimension(i) {
 }
 
 function buildConfig() {
-  const dims = form.dimensions.map((d) => ({
-    key: d.key.trim(),
-    label: d.label.trim(),
-    direction: d.direction,
-    first_offer: Number(d.first_offer),
-    bottom_line: Number(d.bottom_line),
-    keywords: d.keywords.split(/[,，]/).map((k) => k.trim()).filter(Boolean),
-  }))
+  const dims = form.dimensions.map((d) => {
+    const first = Number(d.first_offer)
+    const bottom = Number(d.bottom_line)
+    if (Number.isNaN(first) || Number.isNaN(bottom) || first <= 0 || bottom <= 0) {
+      ElMessage.error(`维度「${d.label || d.key}」的首报价与底线需为正数`)
+      throw new Error('invalid-dim')
+    }
+    return {
+      key: d.key.trim(),
+      label: d.label.trim(),
+      direction: d.direction,
+      first_offer: first,
+      bottom_line: bottom,
+      keywords: d.keywords.split(/[,，]/).map((k) => k.trim()).filter(Boolean),
+    }
+  })
   const weights = {}
   const w = 1 / Math.max(1, dims.length)
   dims.forEach((d) => { weights[d.key] = Number(w.toFixed(2)) })
@@ -177,8 +185,8 @@ async function submit() {
             <el-button size="small" plain type="danger" @click="removeDimension(i)">移除</el-button>
           </div>
           <div class="dim-row">
-            <el-input v-model.number="d.first_offer" placeholder="对手首次报价" class="w-num" type="number" />
-            <el-input v-model.number="d.bottom_line" placeholder="对手底线（不可突破）" class="w-num" type="number" />
+            <el-input v-model="d.first_offer" placeholder="对手首次报价（如 3 万填 3）" class="w-num" />
+            <el-input v-model="d.bottom_line" placeholder="对手底线（如 2 万填 2）" class="w-num" />
             <el-input v-model="d.keywords" placeholder="触发关键词（报价,价格,万）" />
           </div>
           <div class="dim-hint">
