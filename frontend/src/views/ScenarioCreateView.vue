@@ -144,11 +144,14 @@ async function submit() {
             <el-button size="small" plain type="danger" @click="removeDimension(i)">移除</el-button>
           </div>
           <div class="dim-row">
-            <el-input v-model.number="d.first_offer" placeholder="对手首报价" class="w-num" type="number" />
-            <el-input v-model.number="d.bottom_line" placeholder="底线" class="w-num" type="number" />
-            <el-input v-model="d.keywords" placeholder="关键词（逗号分隔：报价,价格,万）" />
+            <el-input v-model.number="d.first_offer" placeholder="对手首次报价" class="w-num" type="number" />
+            <el-input v-model.number="d.bottom_line" placeholder="对手底线（不可突破）" class="w-num" type="number" />
+            <el-input v-model="d.keywords" placeholder="触发关键词（报价,价格,万）" />
           </div>
           <div class="dim-hint">
+            ⚠️ 首报价=对手开价（如 3 万填 3）；底线=对手能接受的最差条件（如 2 万填 2）；
+            关键词用于识别对方话术（如"报价""万"），不要填具体数字。
+            方向"越低越好"=你希望压低（买方视角）；"越高越好"=你希望抬高（卖方视角）。
             参考：{{ DIM_HINT.find((h) => h.key === d.key)?.label || '自定义' }}
             （首报 {{ DIM_HINT.find((h) => h.key === d.key)?.first ?? '—' }} / 底线 {{ DIM_HINT.find((h) => h.key === d.key)?.bottom ?? '—' }}）
           </div>

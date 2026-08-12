@@ -110,6 +110,28 @@ def test_ws_round_then_end(client, token, session_id):
         assert "score" in msg or "summary" in msg
 
 
+def test_ws_engine_error_notifies_user_and_keeps_connection(client, token, session_id, monkeypatch):
+    """LLM/引擎异常时：用户收到错误提示，连接保持，可继续（不静默断连丢消息）。"""
+    from app.engine import engine as engine_mod
+
+    async def _boom(state, text, *, thread_id=None):
+        raise RuntimeError("LLM 网关超时")
+
+    monkeypatch.setattr(engine_mod.NegotiationEngine, "run_round", _boom)
+    with client.websocket_connect(
+        f"/api/negotiation/{session_id}?token={token}"
+    ) as ws:
+        ws.receive_text()  # opening
+        ws.send_text(json.dumps({"type": "user_msg", "text": "你好"}))
+        msg = json.loads(ws.receive_text())
+        assert msg["type"] == "error"
+        assert msg["code"] == "ENGINE_ERROR"
+        # 连接未关闭：可继续发消息（ping 仍应答）
+        ws.send_text(json.dumps({"type": "ping"}))
+        pong = json.loads(ws.receive_text())
+        assert pong["type"] == "pong"
+
+
 def test_ws_persists_messages_to_db(client, token, session_id, session):
     with client.websocket_connect(
         f"/api/negotiation/{session_id}?token={token}"

@@ -269,6 +269,15 @@ async def _negotiate_loop(
             set_rate_limit_user(str(ns.user_id))
             try:
                 state = await engine.run_round(state, text, thread_id=str(ns.id))
+            except Exception as exc:  # noqa: BLE001 LLM/引擎异常：提示用户而非静默断连
+                logger.error("谈判引擎异常（用户消息未处理）: %s", exc)
+                await _reject(
+                    ws,
+                    "ENGINE_ERROR",
+                    "对手暂时走神了，请稍候再试",
+                    close=False,
+                )
+                continue
             finally:
                 set_rate_limit_user(None)
                 nlock.release(str(ns.id))
