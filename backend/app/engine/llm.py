@@ -1,4 +1,4 @@
-"""LLM 客户端：GLM（OpenAI 兼容）可配置，无 key 时自动降级为规则引擎。"""
+"""LLM 客户端：OpenAI 兼容网关（DeepSeek V4 Flash）可配置，无 key 时自动降级为规则引擎。"""
 
 from __future__ import annotations
 
@@ -105,8 +105,8 @@ class BaseLLM(ABC):
         return json.loads(text[start : end + 1])
 
 
-class GLMClient(BaseLLM):
-    """智谱 GLM（OpenAI 兼容协议）。"""
+class OpenAIClient(BaseLLM):
+    """OpenAI 兼容网关客户端（默认 DeepSeek V4 Flash）。"""
 
     configured: bool = True
 
@@ -130,6 +130,11 @@ class GLMClient(BaseLLM):
             timeout=60,
             callbacks=[callbacks] if callbacks else None,
         )
+
+    @property
+    def model(self):
+        """暴露主模型实例（供 create_agent 等 LangChain 原生 API 复用）。"""
+        return self._llm
 
     async def ainvoke(self, prompt: str, *, light: bool = False) -> str:
         # PRD 9.6：单用户 LLM 令牌桶限流（超限返回占位话术，不阻断谈判流）

@@ -123,7 +123,11 @@ def test_ws_engine_error_notifies_user_and_keeps_connection(client, token, sessi
     ) as ws:
         ws.receive_text()  # opening
         ws.send_text(json.dumps({"type": "user_msg", "text": "你好"}))
-        msg = json.loads(ws.receive_text())
+        # 慢回复保活：先收到 thinking（受理确认），随后收到 error
+        first = json.loads(ws.receive_text())
+        if first["type"] == "thinking":
+            first = json.loads(ws.receive_text())
+        msg = first
         assert msg["type"] == "error"
         assert msg["code"] == "ENGINE_ERROR"
         # 连接未关闭：可继续发消息（ping 仍应答）

@@ -89,7 +89,9 @@ jobs:
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
           LLM_LIGHT_MODEL: ${{ secrets.LLM_LIGHT_MODEL }}
-        run: python scripts/llm_smoke.py
+        run: |
+          python scripts/llm_smoke.py
+          python scripts/agent_smoke.py
 
   frontend:
     name: Frontend build

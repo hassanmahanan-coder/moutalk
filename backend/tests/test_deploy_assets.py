@@ -58,7 +58,7 @@ def test_llm_smoke_script_exists():
     script = ROOT / "backend" / "scripts" / "llm_smoke.py"
     assert script.is_file(), "llm_smoke.py 缺失（CI 真实网关验证）"
     text = script.read_text(encoding="utf-8")
-    assert "GLMClient" in text
+    assert "OpenAIClient" in text
     assert "astream" in text, "smoke 应覆盖真流式链路"
 
 
