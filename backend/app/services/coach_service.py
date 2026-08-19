@@ -3,7 +3,7 @@
 - 输入：当前谈判状态（轮次/阶段/历史/出价/已用战术）
 - 输出：局势分析 + 建议策略 + 2-3 条可直接发送的话术选项
 - 建议不写入谈判历史（仅辅助用户，不影响对手行为）
-- GLM 生成失败/未配置 key 时降级规则建议（MockLLM 同构）
+- LLM 生成失败/未配置 key 时降级规则建议（MockLLM 同构）
 - 调用计入 LLM 令牌桶限流（PRD 9.6）
 """
 
@@ -70,7 +70,7 @@ def build_coach_prompt(state: dict) -> str:
 
 
 def mock_advice(state: dict) -> dict[str, Any]:
-    """规则兜底建议（无 LLM key / 生成失败时，结构与 GLM 输出一致）。"""
+    """规则兜底建议（无 LLM key / 生成失败时，结构与 LLM 输出一致）。"""
     phase = state.get("phase", "opening")
     round_no = state.get("round", 1)
     if round_no <= 1:
@@ -101,7 +101,7 @@ def mock_advice(state: dict) -> dict[str, Any]:
 
 
 async def get_coach_advice(llm, state: dict) -> dict[str, Any]:
-    """生成教练建议（GLM 优先，失败/超限降级规则）。"""
+    """生成教练建议（LLM 优先，失败/超限降级规则）。"""
     if not _check_rate_limit():
         logger.warning("教练调用触发限流，返回规则建议")
         return mock_advice(state)

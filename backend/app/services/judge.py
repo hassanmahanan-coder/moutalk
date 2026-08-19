@@ -81,7 +81,7 @@ async def default_judge(history: list[dict], scenario: dict) -> dict[str, Any]:
 
 
 class LLMJudge:
-    """GLM-as-Judge：由 BaseLLM 驱动的主观评分器。"""
+    """LLM-as-Judge：由 BaseLLM 驱动的主观评分器。"""
 
     def __init__(self, llm: BaseLLM):
         self._llm = llm
@@ -116,7 +116,7 @@ class LLMJudge:
 
 
 def build_judge(llm: BaseLLM | None = None) -> LLMJudge:
-    """按需构建 Judge：默认复用引擎的 build_llm（配 key 走 GLM，否则 MockLLM）。"""
+    """按需构建 Judge：默认复用引擎的 build_llm（配 key 走 OpenAI 兼容网关，否则 MockLLM）。"""
     from app.engine.engine import build_llm
 
     return LLMJudge(llm or build_llm())

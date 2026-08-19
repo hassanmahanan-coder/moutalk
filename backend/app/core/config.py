@@ -40,10 +40,10 @@ class Settings(BaseSettings):
     reranker_backend: str = "local_cpu"
     reranker_model_path: str = ""  # BGE-Reranker 本地目录（含 config.json）；空则 Noop 降级
 
-    llm_base_url: str = "https://open.bigmodel.cn/api/paas/v4/"
+    llm_base_url: str = "https://opencode.ai/zen/go/v1"
     llm_api_key: str = ""
-    llm_model: str = "glm-4-plus"
-    llm_light_model: str = "glm-4-flash"
+    llm_model: str = "deepseek-v4-flash"
+    llm_light_model: str = "deepseek-v4-flash"
     llm_stream: bool = True
 
     celery_broker_url: str = "redis://localhost:6379/1"

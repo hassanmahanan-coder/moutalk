@@ -1,7 +1,7 @@
 """真实 LLM 网关 smoke 测试（CI 专用，本地亦可跑）。
 
 用法：LLM_API_KEY=xxx python scripts/llm_smoke.py
-- 验证 GLMClient 初始化、ainvoke、astream 三条主链路
+- 验证 OpenAIClient 初始化、ainvoke、astream 三条主链路
 - 失败以非零码退出（CI 门禁）
 """
 
@@ -22,9 +22,9 @@ async def main() -> None:
         print("SKIP: LLM_API_KEY 未配置")
         sys.exit(0)
 
-    from app.engine.llm import GLMClient
+    from app.engine.llm import OpenAIClient
 
-    llm = GLMClient(settings)
+    llm = OpenAIClient(settings)
     print(f"model: {settings.llm_model} / light: {settings.llm_light_model}")
 
     reply = await llm.ainvoke("请只回复两个字：正常")
