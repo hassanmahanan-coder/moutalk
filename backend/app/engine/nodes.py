@@ -177,11 +177,14 @@ async def utterance_node(state: NegotiationState, llm: BaseLLM, rag=None, stream
     rag_section = ""
     if rag is not None:
         try:
+            # role='assistant'：只取对手应答作参考，用户消息不得注入 prompt（防 LLM 回显）
             refs = rag.search(
                 state.get("scenario_id", ""),
                 state.get("user_message", ""),
                 top_k=3,
+                role="assistant",
             )
+            refs = [r for r in refs if r.get("role") == "assistant"]
             if refs:
                 lines = "\n".join(f"  - {r['text']}" for r in refs if r.get("text"))
                 rag_section = f"[历史参考] 相似情境之前这样应答过:\n{lines}\n"
@@ -196,7 +199,8 @@ async def utterance_node(state: NegotiationState, llm: BaseLLM, rag=None, stream
         retry_hint=retry_hint,
         dim_hints=_dim_hints(scenario),
     )
-    # 真流式（PRD 9.4 阶段 2）：非重试轮边生成边转发；重试轮不流式（避免文本残影）
+    # 伪流式：完整生成 → 底线检查 → 展示端分片（negotiation._stream_text）。
+    # stream 非空时走真流式（保留能力）；重试轮恒走非流式（避免残影/重复拼接）。
     if stream is not None and not state.get("retry_count"):
         parts: list[str] = []
         async for piece in llm.astream(prompt):

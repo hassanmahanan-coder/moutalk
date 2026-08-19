@@ -194,7 +194,7 @@ async def _negotiate_loop(
         # PRD 9.4 真流式：utterance 节点边生成边转发（重试轮自动退回伪流式）
         stream_callback=lambda piece: ws.send_json({"type": "token", "text": piece}),
     )
-    llm_mode = "mock" if isinstance(engine.llm, MockLLM) else "glm"
+    llm_mode = "mock" if isinstance(engine.llm, MockLLM) else "llm"
 
     if ns.messages_json:
         if checkpointer is not None:
@@ -267,6 +267,12 @@ async def _negotiate_loop(
                 continue
             # PRD 9.6：设置用户 ID 供 LLM 令牌桶限流
             set_rate_limit_user(str(ns.user_id))
+            # Agent 慢回复（20-40s）保活：先推 thinking 事件（受理确认 + 维持消息流，
+            # 对经过代理的 WS 友好；前端可据此刻画"对方正在思考"，troubleshooting #60）
+            try:
+                await ws.send_json({"type": "thinking"})
+            except Exception:  # noqa: S110, BLE001 推送失败（已断开）不阻断
+                pass
             try:
                 state = await engine.run_round(state, text, thread_id=str(ns.id))
             except Exception as exc:  # noqa: BLE001 LLM/引擎异常：提示用户而非静默断连

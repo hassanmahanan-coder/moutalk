@@ -30,8 +30,8 @@ class FakeRAG:
         self.results = results
         self.queries = []
 
-    def search(self, scenario_id: str, query: str, top_k: int = 3) -> list[dict]:
-        self.queries.append((scenario_id, query, top_k))
+    def search(self, scenario_id: str, query: str, top_k: int = 3, role: str | None = None) -> list[dict]:
+        self.queries.append((scenario_id, query, top_k, role))
         return self.results
 
 
@@ -73,10 +73,25 @@ async def test_rag_query_uses_scenario_and_user_msg():
     llm = FakeLLM()
     await utterance_node(_state(), llm, rag=rag)
     assert rag.queries
-    sid, query, top_k = rag.queries[0]
+    sid, query, top_k, role = rag.queries[0]
     assert sid == "it_procurement"
     assert "报价 200 万可以吗？" in query
     assert top_k == 3
+    assert role == "assistant", "话术生成应只取助手应答作参考（防回显）"
+
+
+async def test_user_message_never_injected_as_reference():
+    """回归（回显 bug）：即使 RAG 返回用户消息，也不得注入话术 prompt。"""
+    rag = FakeRAG(
+        [
+            {"text": "235 太贵了，200 万可以吗", "role": "user", "distance": 0.9},
+            {"text": "可以谈，220 万包含三年原厂服务", "role": "assistant", "distance": 0.8},
+        ]
+    )
+    llm = FakeLLM()
+    await utterance_node(_state(), llm, rag=rag)
+    prompt = llm.calls[0]
+    assert "235 太贵了，200 万可以吗" not in prompt, "用户消息不得作为'应答参考'注入"
 
 
 async def test_no_rag_keeps_prompt_unchanged():

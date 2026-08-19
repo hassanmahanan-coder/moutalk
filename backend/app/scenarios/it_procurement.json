@@ -24,7 +24,11 @@
       "direction": "min",
       "first_offer": 235,
       "bottom_line": 180,
-      "keywords": ["报价", "价格", "万"],
+      "keywords": [
+        "报价",
+        "价格",
+        "万"
+      ],
       "prompt_hint": "请给出明确报价，格式：「报价：XX 万」"
     },
     {
@@ -34,7 +38,10 @@
       "direction": "max",
       "first_offer": 30,
       "bottom_line": 90,
-      "keywords": ["付款", "账期", "天"],
+      "keywords": [
+        "付款",
+        "账期"
+      ],
       "prompt_hint": "付款周期按天计，格式：「付款周期：XX 天」"
     },
     {
@@ -44,7 +51,11 @@
       "direction": "min",
       "first_offer": 1,
       "bottom_line": 2,
-      "keywords": ["保修", "质保", "年"],
+      "keywords": [
+        "保修",
+        "质保",
+        "年"
+      ],
       "prompt_hint": "保修年限按年计，格式：「保修：X 年」"
     },
     {
@@ -54,7 +65,10 @@
       "direction": "max",
       "first_offer": 15,
       "bottom_line": 45,
-      "keywords": ["交期", "交货", "天"],
+      "keywords": [
+        "交期",
+        "交货"
+      ],
       "prompt_hint": "交期按天计，格式：「交期：XX 天」"
     }
   ],

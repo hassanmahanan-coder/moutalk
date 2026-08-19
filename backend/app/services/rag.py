@@ -49,13 +49,15 @@ def _normalize_uri(uri: str) -> str:
 
 
 def _embedding_dim(embedder: EmbeddingBackend) -> int:
-    """embedding 维度：BGE 后端从模型 config 读取（512/1024 自适应），hash 用默认。"""
+    """embedding 维度：BGE 后端从模型 config 读取（512/1024 自适应），hash 用实例维度或默认。"""
     dim = getattr(embedder, "dim", None)
     if callable(dim):
         try:
             return int(dim())
         except Exception as exc:  # noqa: BLE001 维度读取失败回退默认
             logger.warning("embedding 维度读取失败，回退默认 %s: %s", _HASH_DIM, exc)
+    elif isinstance(dim, int):
+        return dim
     return _HASH_DIM
 
 
@@ -109,10 +111,27 @@ class RAGMemory:
                 if field.get("name") == "vector":
                     existing_dim = field.get("params", {}).get("dim")
                     break
-            if existing_dim != dim:
+            # 维度漂移防护（troubleshooting #62-C）：hash 降级后端沿用现有集合维度
+            # （BGE 512 ↔ hash 不能互换维度，否则 setup 会反复 drop 重建清空记忆）。
+            # hash 降级时可动态适配到已建集合的维度，避免无谓清空。
+            from app.services.embeddings import HashEmbeddingBackend
+
+            if (
+                existing_dim is not None
+                and existing_dim != dim
+                and isinstance(self._embedder, HashEmbeddingBackend)
+            ):
                 logger.warning(
-                    "collection %s 维度 %s != 当前 %s，drop 重建（旧数据弃）",
-                    COLLECTION_NAME,
+                    "collection 维度 %s != hash 默认 %s；hash 降级沿用 %s（不 drop 保留记忆）",
+                    existing_dim,
+                    dim,
+                    existing_dim,
+                )
+                self._embedder = HashEmbeddingBackend(int(existing_dim))
+                dim = self._dim()
+            elif existing_dim is not None and existing_dim != dim:
+                logger.warning(
+                    "collection 维度 %s != 当前 %s，drop 重建（旧数据弃）——请确认是主动更换 embedding 模型，而非配置抖动",
                     existing_dim,
                     dim,
                 )
@@ -143,19 +162,27 @@ class RAGMemory:
         # Milvus 完整版 insert 异步落盘：flush 后立即可检索（Lite 同步语义下无副作用）。
         self._ensured().flush(COLLECTION_NAME)
 
-    def search(self, scenario_id: str, query: str, top_k: int = 3) -> list[dict[str, Any]]:
+    def search(self, scenario_id: str, query: str, top_k: int = 3, role: str | None = None) -> list[dict[str, Any]]:
+        """相似检索（PRD 8.3）：Milvus top-10 候选 → reranker 精排 → top_k。
+
+        role 非空时只返回该角色记录（如 role='assistant' 只取对手应答，
+        避免用户消息被当作'应答参考'注入 prompt 导致 LLM 回显）。
+        """
         if not query.strip():
             return []
         vector = self._embedder.embed(query)
         if not any(vector):
             return []
         try:
+            filter_expr = f'scenario_id == "{scenario_id}"'
+            if role:
+                filter_expr += f' and role == "{role}"'
             # PRD 8.3：Milvus 先取 top-10 候选（宽松召回），reranker 精排后取 top_k
             res = self._ensured().search(
                 COLLECTION_NAME,
                 data=[vector],
                 limit=max(top_k * 3, RERANK_CANDIDATES),
-                filter=f'scenario_id == "{scenario_id}"',
+                filter=filter_expr,
                 output_fields=["text", "role", "scenario_id"],
             )
         except Exception:  # noqa: BLE001 collection 不存在/未建则空结果
