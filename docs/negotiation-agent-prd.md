@@ -1869,7 +1869,43 @@ POSTGRES_HOST=localhost / PORT=5433       # Docker 映射
 | 引擎兼容 | load_scenario_for_session：DB 优先（自定义），官方回退 JSON 文件 |
 | 测试 | 校验器 11 例 + API 10 例（可见性/越权/级联删除/会话）+ 端到端 |
 
-### C.7 测试基线（2026-08-11 更新）
-- 后端：**472 passed** + ruff clean
+### C.7 测试基线（2026-08-13 最终验收更新）
+- 后端：**477 passed + 2 skipped** + ruff clean（认证 56 / 场景+会话额度 52 / 引擎+WS+coach 85 / 报告+趋势+回放 43 / 通知+支付 91 / 管理+LLM+RAG 70+2sk / 基础设施 95）
 - 前端：vitest 21 passed + Playwright E2E 4 passed（本地，需 8765+5173 运行中）+ build 通过
 - 迁移：53f0702dbf0f → 58f71c3926e5 → 8884346523fb → b9239a8602ae → 360f036d2731 → 6c8e2dfd61ee → 6a5e73674b6a
+- 真实验收（2026-08-13）：认证/建单 201/直付 notify success/轮询 paid/角色升级/支付+报告通知落库+WS 实时推送/谈判 opening+LLM 流式+meta+报告/自定义场景 CRUD+越权 404/403+级联删除/PDF 导出/额度 5 次后 403——全通；详见 troubleshooting #54
+
+
+## 附录 D：Agent 架构与工程加固（2026-08-19 更新）
+
+> 本附录记录谈判引擎架构升级与稳定性加固（详见 troubleshooting #55-#64）。
+
+### D.1 谈判引擎：ReAct Agent 双模式（核心架构升级）
+- **有 LLM key（configured=True）→ langchain.agents.create_agent ReAct 图**：5 个规则能力注册为 Tools（read_current_state / analyze_user_intent / select_tactic_by_rules / search_memory / validate_reply），LLM 自主编排；ToolCallLimitMiddleware(run_limit=10) 防死循环；动态 System Prompt 注入人设/战术/历史/出价/流程指令。
+- **无 key / 构建失败 → 原 5 节点确定性工作流**（MockLLM 全功能可跑，270+ 测试离线全绿）。
+- **护栏三件套**：prompt 强制 validate_reply + 引擎外层底线双校验 + 逐轮熔断（运行期 LLM 故障 → 本轮 fallback 模板，自愈）。
+- **规则补齐**：Agent 回复后引擎用 rule_intent/select_tactic 补意图与战术（meta 标签/报告统计/多步战术 tactic_context 完整）。
+- **轮级限流**（PRD 9.6）：Agent 循环多次直调 LLM 绕过 per-call 限流 → 改轮入口扣 1（5 轮/分钟），超限返回系统繁忙并正常落库。
+
+### D.2 模型统一
+- 全链路统一 **deepseek-v4-flash**（opencode go 网关 https://opencode.ai/zen/go/v1），主/轻量同模型；移除 glm-5.2/glm-4 引用（代码默认值、.env 及示例文件同步）。GLMClient 更名 OpenAIClient。
+
+### D.3 输出模式：伪流式
+- 移除引擎内真流式转发（消除输出两次内容双发缺陷）；invoke 一次性生成 → 底线检查 → _stream_text 分片展示（内容连续不回退）。llm.astream 真流式能力保留可开关。
+
+### D.4 RAG 加固（PRD 8.3）
+- search(role=...) 过滤：只取 assistant 应答作参考，修复用户原话被当应答参考导致回显（#56）。
+- 维度漂移防护：hash 降级沿用现有集合维度（不 drop 清空记忆）；_embedding_dim 识别 hash 实例维度（#63）。
+- 多路召回：当前仅向量单路；预留 BM25+RRF 融合扩展。
+
+### D.5 WS 稳定性（PRD 8.2/9.1）
+- 	hinking 受理事件（Agent 慢回复保活，前端对方正在思考•••占位）。
+- 前端断线复位 streaming/turnText/lastMeta + 发送锁复位（防重连后无法发送/残影，#64）。
+- Windows 事件循环结论（#60）：PostgresSaver 两种循环均不可靠 → Proactor + JSON 双写降级（断线续谈完整）；Linux 生产正常启用。
+
+### D.6 依赖版本
+- langgraph 1.2.11 / langchain 1.3.15 / langchain-openai 1.5.1（create_agent 为 langchain 1.x 新 API）。
+
+### D.7 测试基线（2026-08-19 更新）
+- 后端：**496 passed + 2 skipped** + ruff clean（含 Agent 引擎 16 例、RAG 维度/回显回归）。
+- 前端：vitest 21 passed + build 通过。

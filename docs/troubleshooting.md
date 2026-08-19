@@ -561,3 +561,132 @@ egotiation.py / eports.py：dev 环境（app_env=dev）直接同步生成报告
   5. **前端**：LobbyView「＋自定义场景」入口 + 卡片"自定义"标签与删除按钮；新增 ScenarioCreateView（表单模式：标题/背景/规则/对手/开场白/安全话术/维度编辑器，权重自动均分修正浮点；JSON 导入模式 + 示例填充）。
 - **验证**：端到端——创建 201 → 拥有者列表可见 → 他人不可见 → 拥有者开会话 201（opening 正常）→ 他人开会话 403 → 删除 200（含会话场景级联）→ 详情 404；后端 472 passed；前端 build + 21 测试通过。
 - **注意**：① 中文标题 slug 回退 "custom" 前缀（无拼音库）；② 自定义场景免费无额度限制区分（与官方免费一致）；③ 删除自定义场景会级联删除其全部会话（私有数据，合理）。
+
+## 54. 最终验收（2026-08-13）：全功能冒烟 + 联合旅程测试发现
+
+- **状态**：全部功能通过（后端 477 passed + 2 skipped；前端 vitest 21 + build + E2E 4；ruff clean）
+- **发现 1：WS 协议客户端理解偏差**——`GET /api/negotiation/{session_id}?token=...` 连接即发 `opening`/`history`，**无需也不接受 `start` 消息**（`start` 属未知类型，会收到 `UNKNOWN_TYPE` 拒绝）；冒烟脚本先发 start 导致首帧读取超时。属协议认知问题，非代码缺陷（客户端实现在 RoomView 均正确）。
+- **发现 2：API 契约细节**（冒烟脚本踩坑，均非代码缺陷）：
+  - 建单 `POST /api/payment/orders` 请求体为 `{"type": "subscribe"|"scenario", "target_id"?}`（OrderType 枚举），非 `{"plan": "pro"}`。
+  - 已读标记为 `PATCH /api/notifications/{id}`（无 `/read` 后缀）。
+  - 自定义场景创建/更新请求体为 `{"config": {...}}` 包装，config 内必填 title/briefing/rules/opponent_role/opening_line/safe_fallback(≥1)/dimensions(对象数组，每维 key/label/direction/first_offer/bottom_line/keywords)/weights（覆盖全部维度且和≈1）。
+- **发现 3：E2E「登录失败提示密码错误」偶发失败**——`expect(page.locator('.el-message')).toBeVisible()` 断言窗口（5s）与 ElMessage 生命周期（默认 3s 后消失）及慢网络下的竞态：请求 >5s 返回时按钮仍 disabled、ElMessage 尚未/已消失。单独重跑与全量重跑均通过（4/4），确认非代码 bug，属测试时序脆弱性。
+- **发现 4：pytest 并行污染**——两个 pytest 进程并发跑共享 moutalk_test 库会互相污染（场景 seed/额度计数等断言失败），需串行执行。
+- **发现 5：trends 数据点不足**——同月多份报告聚合后仅 1 个"月"数据点，`insufficient=True`（需跨月 ≥2 点才出曲线），属设计行为（PRD 9.18 按月聚合）。
+- **解决方案**：均无需改产品代码；E2E 偶发可在 CI 中对该用例提高等待/断言宽松度（如断言 API 响应或延长 toBeVisible 超时）。验收结论：功能完成度 100%，无未修复缺陷。
+- **注意**：验收账号 3137504285@qq.com（mou）密码已重置为 mt123456 并恢复 free 角色；其 is_admin=True 保持不变。
+
+## 55. 谈判 LLM 全链路统一为 DeepSeek V4 Flash（去除 GLM-5.2）
+
+- **状态**：已解决（2026-08-17）
+- **问题**：谈判调用的模型配置不统一——`.env` 已是 `deepseek-v4-flash`，但代码默认值（`config.py`：bigmodel 直连 + `glm-4-plus`/`glm-4-flash`）、`.env.example`（智谱直连）与 `.env.prod.example`（`LLM_MODEL=glm-5.2`）仍指向 GLM；`GLMClient` 类名与 WS `llm_mode="glm"` 标识易误导后续维护者配置 GLM-5.2。
+- **根因**：模型迁移到 opencode go 网关时只改了本地 `.env`，默认值/示例/命名未同步。
+- **解决**：
+  1. `config.py` 默认值：`llm_base_url=https://opencode.ai/zen/go/v1`、`llm_model=deepseek-v4-flash`、`llm_light_model=deepseek-v4-flash`（无 .env 也不走 GLM）。
+  2. `GLMClient` 重命名为 `OpenAIClient`（llm.py/engine.py/llm_smoke.py，同步测试断言）。
+  3. WS `llm_mode` 值 `"glm"` → `"llm"`（negotiation.py + 前端 useNegotiation.js 默认值）。
+  4. `.env.example` / `.env.prod.example` 统一 deepseek-v4-flash（去除 glm-5.2）。
+  5. 文档同步（project-progress.md 技术栈表 / project-presentation.md / 服务 docstring）。
+- **验证**：后端相关测试通过 + ruff clean（详见当日全量回归）。
+
+## 56. 教练话术发送后对手回显用户原话（RAG 用户消息污染 prompt）
+
+- **状态**：已解决（2026-08-17）
+- **问题**：谈判中点击教练生成的话术选项发送后，对手回复**回显用户原话**（不针对内容回应）；同一条用户消息在对话中重复出现、被"一起分析"，最终全程得不到正确回复。
+- **根因**：`RAGMemory.search()` 检索历史时**只按 scenario_id 过滤、不区分 role**（`app/services/rag.py`），而 `.env` Milvus 是严格鉴权/真实数据的 http 模式。用户消息（`role=user`，谈判中每轮 `rag.add_round(..., "user", text)` 写入）在向量空间与当前发言最相似（实测 top1-5 全为同文本 user 消息，相似度 0.86）；`utterance_node` 又把检索结果当 **"[历史参考] 相似情境之前这样应答过"** 注入话术 prompt → DeepSeek 把用户原话当作"上次的应答"→ **直接回显**。重复发送（双击/连点教练选项）在 RAG 里累积多条相同 user 记录，进一步抬高相似度。
+- **解决**：
+  1. `RAGMemory.search(..., role=None)` 新增 role 过滤，filter 拼接 `and role == "..."`；`utterance_node` 调用传 `role="assistant"` 且对结果二次过滤 `r.get("role") == "assistant"`（只取对手应答作参考）。
+  2. 前端 `RoomView.vue`：教练选项按钮 `:disabled="neg.streaming || sending"`；`send()` 加 `sending` 防重入标记（meta/error 时复位），杜绝双击/连点重复发送。
+- **验证**：真实 Milvus 数据检索证明 user 消息不再返回；新增回归 `test_rag.py::test_search_role_filter`、`test_rag_injection.py::test_user_message_never_injected_as_reference`；RAG/WS/coach/engine 相关 57 tests passed + ruff clean + 前端 21 tests + build 通过。
+
+## 57. 真流式双发 + 残影问题 → 引擎层切换为伪流式
+
+- **状态**：已解决（2026-08-17）
+- **问题**：真流式模式下同一轮回复文本**双发**——`utterance_node` 通过 `stream_callback` 边生成边转发一次，`negotiation.py` 又在 `await _stream_text(ws, reply)` 把完整回复分片再发一次 → 前端 `turnText` 累积拼接成两遍文本（"输出两次内容"的来源之一）。叠加底线检查后置，重试轮存在文本残影/拼接可能。
+- **根因**：`stream_callback` 流式转发与 `_stream_text` 展示缓冲"两条输出通道未互斥"；真流式必然在底线检查前发 token，架构上无法避免露出未过检内容。
+- **解决**：`negotiation.py` 构造 `NegotiationEngine` 时**移除 `stream_callback`**→ `build_graph(stream=None)` → `utterance_node` 走 `ainvoke` 一次性完整生成 → `bottom_line` 检查通过后由 `_stream_text` 伪流式分片展示（内容连续、不回退、无重复）。`llm.astream` 真流式链路保留在 `OpenAIClient`/`scripts/llm_smoke.py`，可随时开关。前端协议零改动。
+- **验证**：WS 端到端实测 token 4 片/45 字符（≈12 字/片）单发无重复；WS/engine/RAG/llm 相关 47 tests passed + ruff clean。
+
+## 58. 谈判连接 10 秒必断 + 无限重连（uvicorn reload Windows 不稳定）
+
+- **状态**：已解决（2026-08-17）
+- **问题**：后端启用 uvicorn reload 热重载后，谈判 WS 连接建立约 10 秒后被**静默掐断**（客户端 code=1006，无关闭帧、服务端无任何断开日志），前端触发无限重连循环。
+- **根因**：**uvicorn reload 在 Windows 的 spawn 子进程管理不可靠**。日志证据：`WatchFiles detected changes in 'app\api\negotiation.py'. Reloading...` 后 `Finished server process [13664]`，但**新 server 进程从未启动**；旧 server 进程残留为"半死"状态（进程列表仍在），监听 socket 归 reloader 主进程所有，残留进程 accept 新连接后约 10 秒异常终止连接（1006 无 close 帧）。上午未开 reload 时谈判正常，开 reload 后复现，因果吻合。
+- **解决**：开发启动改为 `MOUTALK_RELOAD=0`（run.py 保留 reload 能力、默认由环境变量控制）。验证：无 reload 模式连接 80 秒 + 8 次 ping 全部正常；`test_negotiation_ws.py` 10 passed。**注意**：Windows 开发机后端改代码需手动重启（前端 Vite 热更新不受影响）；Linux/CI 生产不用 reload 无此问题。
+- **遗留**：若坚持 Windows 热重载，需换 `watchfiles` 直驱子进程重载方案（绕开 uvicorn reloader 的 spawn 清理），当前非必需。
+
+## 59. 谈判引擎升级 ReAct Agent 架构（langchain.agents.create_agent + langgraph 1.2.11）
+
+- **状态**：已实现（2026-08-17；后端 62+ passed + ruff clean + 真实端到端验证）
+- **变更**：
+  1. **版本更新**：langgraph 0.2→1.2.11、langchain 1.3.15、langchain-openai 1.5.1（pyproject 约束同步：`langgraph>=1.2.11` / `langchain>=1.3.15` / `langchain-openai>=1.5.1`）。
+  2. **Agent 构建**：新增 `app/engine/agent_builder.py`——`create_agent(model, tools, checkpointer, name)`（官方 API，Source: https://reference.langchain.com/python/langchain/agents/factory/create_agent）；5 个 Tools：`read_current_state`（闭包状态）/ `analyze_user_intent`（规则意图）/ `select_tactic_by_rules`（规则战术库）/ `search_memory`（RAG role=assistant）/ `validate_reply`（底线校验）；动态 system prompt 注入人设/战术/历史/本轮发言，流程指令强制"生成后必须 validate_reply 校验"。
+  3. **双模式**（engine.py）：`llm.configured=True` → Agent 图（ReAct 循环）；无 key/Mock → 原 5 节点确定性工作流（Mock 无法模拟 tool calling）。`OpenAIClient` 暴露 `model` 属性供 create_agent 绑定。
+  4. **底线双校验**：Agent 输出后引擎外层再跑 `check_bottom_lines`，违规/异常 → fallback 安全模板（`bottom_line_status=fallback`）。
+  5. **持久化**：Agent 图状态 schema 为 messages，业务字段仍靠 `save_round` JSON 双写（Agent 模式跳过 aupdate_state）。
+  6. WS 协议零改动；`llm_mode` 字段值 `"glm"`→`"llm"`（此前被误还原，本次恢复）。
+- **真实端到端验证**：WS 一轮对话，Agent 回复 181 字（对手拒绝 200 万、逐步让步 215→210→205 万并附带付款/保修条件），无回显，bottom=ok。
+- **新发现缺陷（已修复，见下）**：`it_procurement` 场景 delivery 维度关键词含"天"，与 payment_cycle 通用词冲突——回复"付款 **60 天**"会被 delivery 维度（max 底线 45）误判为交期违规，触发兜底。根因：`extract_dim_value` 按关键词首次出现位置提取数值，通用量词（天/年）跨维度歧义。**建议**：delivery 关键词去掉"天"改"交期/货期"，或提取时按维度语义消歧。
+
+## 59b. Agent 架构问题修复（Bug A-D）
+
+- **状态**：已解决（2026-08-17；14 tests passed + ruff clean + 真实端到端）
+- **Bug A（严重，断线续谈损坏）**：Agent 模式 `restore_state` 返回的是图状态（messages 列表，AgentState），与 NegotiationState 结构不同——断线重连时 `negotiation.py` 会把它当业务状态用导致字段缺失/错乱。
+  - **修复**：`agent_mode` 时 `restore_state` 直接返回 None，由调用方走业务表 `messages_json/offers_json` JSON 重建（Agent 模式业务字段本就靠 save_round 双写）。
+- **Bug B（功能缺失，meta 战术标签为空）**：Agent 回复后 `state.intent/selected_tactic` 为空 → 前端不显示战术标签、报告战术统计缺失、进度判定失效。
+  - **修复**：`_run_agent_round` 正常路径后用 `rule_intent` 补意图 + `select_tactic` 规则补战术（含 firmness 判定），写入 `state.intent/selected_tactic/tactic_reason`，保证 `_finalize_round` 的 used_tactics/进度判定完整。
+- **Bug C（关键词歧义误报）**：delivery 维度关键词"天"与 payment_cycle 共享——"付款 60 天"被 delivery（max 底线 45）误判违规触发兜底。
+  - **修复**：`it_procurement.json` 两维度关键词移除通用量词"天"（保留"付款/账期"与"交期/交货"，提取仍可命中）；salary/supplier 场景无此类共享，未动。
+- **Bug D（战术工具缺 firmness）**：Agent `select_tactic_by_rules` 未传 `user_firmness`（默认 low），规则战术推荐失真。
+  - **修复**：按 intent.concessions / intent_type 推导 firmness（与工作流 derive_firmness 同构）。
+- **验证**：新增 4 个回归测试（restore_state=None / intent+tactic 补齐 / 付款-交期歧义消解 / 战术工具 firmness）；真实端到端 `meta tactic=divide_conquer`、`llm_mode=llm`、bottom=ok、无回显。
+
+## 60. Windows 启用 PostgresSaver 实验：两种事件循环均不可靠，维持 Proactor + JSON 降级
+
+- **状态**：已探明（2026-08-17；66 tests passed + ruff clean + 真实端到端）
+- **目标**：让 Windows 开发机的 checkpoints 表真正写入（代替 JSON 降级）。
+- **实验与结论**：
+  1. **Proactor（默认）**：`psycopg async 报 InterfaceError: Psycopg cannot use the 'ProactorEventLoop'`（立即失败）→ 降级 JSON。
+  2. **Selector（`run.py` 手动 `WindowsSelectorEventLoopPolicy` + `asyncio.new_event_loop` + `uvicorn.Server.serve()`）**：`AsyncPostgresSaver.from_conn_string + setup` **挂起且无法被 `asyncio.timeout` 取消**（最小复现脚本 40s 不退出）——挂起任务遗留还会干扰事件循环，实测 WS 在收到 opening 后异常断连（无 close 帧）。→ 同样不可用。
+- **结论**：Windows 上 `AsyncPostgresSaver` 在两种事件循环下都不稳定（#52 的"Selector 挂起"坐实）；**保持默认 Proactor + `open_checkpointer` 8s 超时降级 JSON**（`sessions.messages_json/offers_json` 双写，断线续谈功能完整）。`run.py` 已固化该策略。
+- **连带澄清（WS 慢回复连接）**：Python `websockets` 测试客户端默认 keepalive ping 20s 超时，Agent 慢回复（22-46s）期间会误断（`sent 1011 keepalive ping timeout`）——**浏览器 WebSocket 无此超时，真实用户不受影响**；验证：客户端保持主动 ping（每 20s）连接稳定，22.6s 正常收到回复。**产品侧提示**：Agent 模式每轮回复空窗 20-40s，前端可先推"对方正在思考"占位；生产若过代理需确认无 idle 超时。
+- **替代路线（未采用）**：Windows 需图自动存档可用时，可换 `langgraph.checkpoint.sqlite.aio.AsyncSqliteSaver`（本地文件，无事件循环坑，Linux 仍用 PostgresSaver）。
+
+## 61. Agent 完善：thinking 保活事件 / 工具调用上限 / 记忆激活 / CI 冒烟
+
+- **状态**：已实现（2026-08-17；493 passed + 2 skipped + ruff clean + 真实端到端）
+- **① thinking 事件（防慢回复空窗/代理保活）**：`negotiation.py` user_msg 分支在 `run_round` 前推 `{type:"thinking"}`（受理确认 + 维持消息流）；前端占位"对方正在思考•••"（troubleshooting #60 关联）；Caddy 确认 WS 无空闲超时。WS 测试断言适配（先 thinking 后 error）。
+- **② ToolCallLimitMiddleware**：`create_agent(middleware=[ToolCallLimitMiddleware(run_limit=10)])`——单轮工具调用上限 10 次，防 LLM 死循环/无效往返拖慢响应（默认 continue，异常由引擎 fallback 兜底）。
+- **③RAG 记忆激活与可观测**：Agent system prompt 增加"遇到相似话术先 search_memory 参考历史应答"引导；`search_memory` 工具加 `logger.info` 调用轨迹（验证轮未触发——本地 it_procurement RAG 无数据，属预期；有数据场景才会触发）。
+- **④ Agent 冒烟 + CI**：新增 `scripts/agent_smoke.py`（真实 key 时验证 create_agent 构建 + run_round 一轮对话 + 无回显）；`ci.yml` LLM smoke 步骤追加 `agent_smoke.py`。
+- **验证**：真实端到端 phases=[thinking, token…, meta]、260 字合理回复、tactic=divide_conquer、bottom=ok、llm_mode=llm、无回显；全量 493 passed + 2 skipped；ruff clean。
+
+## 62. Agent 两处隐性 bug：前端发送锁断线卡死 + Agent 限流被绕过
+
+- **状态**：已解决（2026-08-17；42 passed + 前端 21 + ruff clean）
+- **Bug 1（前端发送永久卡死）**：`RoomView` 的 `sending` 发送锁只在 onMeta/onError 复位；若用户在**等待回复中断线重连**，重连成功后 `sending` 仍为 true → `send()` 永远被拦截，用户发不出任何消息（无报错，静默卡死）。
+  - **修复**：handlers 增加 `onOpen` 复位 `sending.value=false`（重连成功/首连都安全）。
+- **Bug 2（Agent 限流被绕过，成本护栏失效）**：工作流的 `_check_rate_limit` 挂在 `OpenAIClient.ainvoke` 内；Agent 模式 `create_agent` 通过 `llm.model`（裸 ChatOpenAI）直调，**完全绕过 per-call 令牌桶** → PRD 9.6 失效，且 Agent 高频调用有成本失控风险。
+  - **修复**：`_run_agent_round` 入口做**轮级限流**（每轮扣 1 次，5 轮/分钟），超限不调 LLM、直接返回"【系统繁忙】请稍候再试"降级话术并正常落库（fallback 语义）。工作流模式保持 per-call 不变。
+  - **回归测试**：`test_agent_round_rate_limited_skips_llm`（patch `app.engine.llm._check_rate_limit` → 断言 LLM 未被调用 + 返回降级话术）。
+- **验证**：后端相关 42 passed；前端 vitest 21 + build；ruff clean。
+
+## 63. RAG 维度漂移防护 + Agent 多步战术跟踪 + hash 维度识别修复
+
+- **状态**：已解决（2026-08-17；496 passed + 2 skipped + ruff clean）
+- **C-1（hash 自定义维度被忽略，真实小 bug）**：`rag._embedding_dim` 只认 callable `dim` 或回退默认 1024，`HashEmbeddingBackend(dim=128)` 的实例维度被忽略 → 建库维度与实际插入向量维度不一致（报 SchemaMismatch）。
+  - **修复**：`_embedding_dim` 支持实例 int 维度。
+- **C-2（维度抖动反复清空记忆）**：BGE(512) 与 hash(1024) 后端切换时，`setup` 检测维度不匹配会 drop 重建清空所有记忆，来回切换即反复清空。
+  - **修复**：hash 降级后端在已有集合维度不同时**沿用现有维度**（动态重建 hash 后端，不 drop）；仅非 hash 后端（如真正更换 BGE 模型）才 drop，并在日志明确警示"确认是主动更换而非配置抖动"。新增回归 `test_hash_downgrade_keeps_existing_collection_dim`（128 维库 + 默认 hash 重连 → 保持 128、数据保留）。
+- **B（Agent 多步战术跟踪）**：`_run_agent_round` 补齐战术时同步 `update_tactic_context`（与工作流一致），支撑红白脸等多步战术的 `active_tactic/step/sub_role` 跨轮状态。新增回归断言 tactic_context 结构存在。
+- **验证**：全量 496 passed + 2 skipped；ruff clean；后端已重启。
+
+## 64. 前端断线状态残留：流式中断线后重连无法发送 + 残影显示
+
+- **状态**：已解决（2026-08-17；vitest 21 + build 通过，Vite 热更新生效）
+- **问题**：`useNegotiation` 的 `onclose` 不复位 `streaming`/`turnText`。Agent 回复**流式输出中途断线**时：`streaming=true`、`turnText` 残留部分文本 → 重连成功后 `streaming` 仍 true → `send()` 检查 `neg.streaming` 被永久拦截（用户发不出消息，无报错）；且新占位气泡会显示上一轮残留文本（残影）。与 #62 Bug1（sending 锁）同源不同点。
+- **修复**：`onclose` 统一复位 `streaming.value=false`、`turnText.value=''`、`lastMeta.value=null`（任何断线路径都清；重连后由 resume/replay 重建）。
+- **验证**：vitest 21 + build 通过；Vite 热更新即时生效。
+
+## 54. 最终验收（2026-08-13）：全功能冒烟 + 联合旅程测试发现
+

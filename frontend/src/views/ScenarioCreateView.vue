@@ -46,8 +46,8 @@ onMounted(async () => {
       key: d.key,
       label: d.label,
       direction: d.direction,
-      first_offer: d.first_offer,
-      bottom_line: d.bottom_line,
+      first_offer: d.first_offer != null ? String(d.first_offer) : '',
+      bottom_line: d.bottom_line != null ? String(d.bottom_line) : '',
       keywords: (d.keywords || []).join(','),
     }))
     jsonText.value = JSON.stringify(detail, null, 2)
@@ -57,7 +57,7 @@ onMounted(async () => {
 })
 
 function addDimension() {
-  form.dimensions.push({ key: '', label: '', direction: 'min', first_offer: null, bottom_line: null, keywords: '' })
+  form.dimensions.push({ key: '', label: '', direction: 'min', first_offer: 1, bottom_line: 0.6, keywords: '' })
 }
 
 function removeDimension(i) {
@@ -187,7 +187,12 @@ async function submit() {
           <div class="dim-row">
             <el-input v-model="d.first_offer" placeholder="对手首次报价（如 3 万填 3）" class="w-num" />
             <el-input v-model="d.bottom_line" placeholder="对手底线（如 2 万填 2）" class="w-num" />
-            <el-input v-model="d.keywords" placeholder="触发关键词（报价,价格,万）" />
+            <el-input v-model="d.keywords" placeholder="触发关键词（报价,价格,万）" class="w-kw" />
+          </div>
+          <div class="dim-labels">
+            <span>首报价</span>
+            <span>底线</span>
+            <span>关键词</span>
           </div>
           <div class="dim-hint">
             ⚠️ 首报价=对手开价（如 3 万填 3）；底线=对手能接受的最差条件（如 2 万填 2）；
@@ -309,13 +314,30 @@ async function submit() {
 .dim-row {
   display: flex;
   gap: 10px;
+  margin-bottom: 6px;
+}
+
+.dim-labels {
+  display: flex;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
-.w-key { flex: 1; }
-.w-label { flex: 1.4; }
-.w-dir { flex: 0.9; }
-.w-num { flex: 1; }
+.dim-labels span {
+  font-size: 11px;
+  color: var(--paper-faint);
+  letter-spacing: 0.08em;
+}
+
+.dim-labels span:nth-child(1) { flex: 1 1 150px; min-width: 140px; }
+.dim-labels span:nth-child(2) { flex: 1 1 150px; min-width: 140px; }
+.dim-labels span:nth-child(3) { flex: 1.5 1 200px; }
+
+.w-key { flex: 1; min-width: 120px; }
+.w-label { flex: 1.4; min-width: 140px; }
+.w-dir { flex: 0.9; min-width: 110px; }
+.w-num { flex: 1 1 150px; min-width: 140px; }
+.w-kw { flex: 1.5 1 200px; min-width: 200px; }
 
 .dim-hint {
   font-size: 11px;
