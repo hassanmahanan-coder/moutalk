@@ -24,6 +24,7 @@ const curve = ref([])
 const coachOpen = ref(false)
 const coachLoading = ref(false)
 const coach = ref(null)
+const sending = ref(false)
 let chart = null
 
 const TACTIC_LABEL = {
@@ -177,6 +178,10 @@ onMounted(async () => {
   }
 
   neg.connect(route.params.id, auth.accessToken, {
+    onOpen() {
+      // 断线重连成功：复位发送锁（否则等待回复中断线后 sending 永久为 true，无法再发）
+      sending.value = false
+    },
     onOpening(msg) {
       pushMsg({ role: 'opponent', text: msg.text, streaming: false, tactic: '', bottom_line: 'unknown', intent: '' })
       setBottomLineMark()
@@ -202,6 +207,7 @@ onMounted(async () => {
       scrollBottom()
     },
     onMeta(msg) {
+      sending.value = false
       metaStat.value = msg
       const last = msgs.value[msgs.value.length - 1]
       if (last && last.role === 'opponent' && last.streaming) {
@@ -246,6 +252,7 @@ onMounted(async () => {
       pollReport(route.params.id)
     },
     onError() {
+      sending.value = false
       finished.value = true
     },
     onClose() {
@@ -258,7 +265,8 @@ onMounted(async () => {
 
 function send() {
   const text = draft.value.trim()
-  if (!text || !neg.connected || finished.value || neg.streaming) return
+  if (!text || !neg.connected || finished.value || neg.streaming || sending.value) return
+  sending.value = true
   draft.value = ''
   pushMsg({ role: 'user', text })
   pushMsg({ role: 'opponent', text: '', streaming: true, tactic: '', bottom_line: 'unknown', intent: '' })
@@ -361,7 +369,16 @@ onBeforeUnmount(() => {
         </div>
         <div v-for="(m, i) in msgs" :key="i" class="bubble-row" :class="m.role">
           <div class="bubble" :class="{ streaming: m.streaming }">
-            <p>{{ m.streaming ? neg.turnText : m.text }}<span v-if="m.streaming" class="caret"></span></p>
+            <p>
+              <template v-if="m.streaming">
+                <span v-if="!neg.turnText" class="thinking-hint">
+                  对方正在思考<span class="dots"><i></i><i></i><i></i></span>
+                </span>
+                <template v-else>{{ neg.turnText }}</template>
+              </template>
+              <template v-else>{{ m.text }}</template>
+              <span v-if="m.streaming" class="caret"></span>
+            </p>
             <div v-if="m.role === 'opponent' && !m.streaming && (m.tactic || m.bottom_line !== 'unknown')" class="meta-tags">
               <span v-if="m.tactic" class="mt">{{ TACTIC_LABEL[m.tactic] || m.tactic }}</span>
               <span class="mt line" :class="m.bottom_line">{{ BOTTOM_LINE_LABEL[m.bottom_line] }}</span>
@@ -405,7 +422,13 @@ onBeforeUnmount(() => {
             <p class="cp-analysis">{{ coach.analysis }}</p>
             <p class="cp-strategy">策略 · {{ coach.strategy }}</p>
             <div class="cp-options">
-              <button v-for="(opt, i) in coach.options" :key="i" class="cp-opt" @click="useCoachOption(opt)">
+              <button
+                v-for="(opt, i) in coach.options"
+                :key="i"
+                class="cp-opt"
+                :disabled="neg.streaming || sending"
+                @click="useCoachOption(opt)"
+              >
                 {{ opt }}
               </button>
             </div>
@@ -664,6 +687,52 @@ onBeforeUnmount(() => {
 @keyframes blink {
   50% {
     opacity: 0;
+  }
+}
+
+.thinking-hint {
+  color: var(--gold-dim);
+  font-style: italic;
+  letter-spacing: 0.05em;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.35;
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+
+.dots i:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
   }
 }
 

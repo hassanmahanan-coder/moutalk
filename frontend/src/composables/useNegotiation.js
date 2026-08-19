@@ -14,7 +14,7 @@ export function useNegotiation() {
   const reportId = ref(null)
   const reportSubmitted = ref(false)
   const errorMsg = ref('')
-  const llmMode = ref('glm')
+  const llmMode = ref('llm')
   let sessionId = ''
   let authToken = ''
   let handlers = {}
@@ -135,6 +135,11 @@ export function useNegotiation() {
 
     sock.onclose = () => {
       connected.value = false
+      // 断线复位流式状态：否则中断线残留 streaming=true 会永久阻塞 send()，
+      // 且 turnText 残影会显示在新气泡上（重要修复）
+      streaming.value = false
+      turnText.value = ''
+      lastMeta.value = null
       clearTimers()
       handlers.onClose?.()
       scheduleReconnect()
